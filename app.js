@@ -236,25 +236,97 @@ function paintTypeChips(){
     ZONES.forEach(z => { if (z.type !== k) return; SHOW.has(k) ? zoneLayer.addLayer(z.layer) : zoneLayer.removeLayer(z.layer); });
     if (sel != null && !SHOW.has(ZONES[sel].type)) selectZone(null); paintTypeChips(); refresh(); });
 }
-const OVS = ['labels','contours','fuel','oyster','reefs','hardbottom'];
-const LS = Object.assign({base:'sat', labels:true, contours:false, fuel:true, oyster:false, reefs:true, hardbottom:false}, store.get('sz2-layers', {}));
-const OV = {oyster:L.layerGroup(), reefs:L.layerGroup(), hardbottom:L.layerGroup(), fuel:L.layerGroup()};
-// public fuel docks statewide (FWC marina inventory: "Public Fuel Dock" selling gas or diesel, operational); ~350 points, loaded once
-map.createPane('fuel').style.zIndex = 460;
-let fuelLoaded = false;
-const FUEL_ICON = L.divIcon({className:'fuel-ic', iconSize:[26,26], iconAnchor:[13,13], popupAnchor:[0,-12],
-  html:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12"/><path d="M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg>'});
-async function loadFuel(){
-  if (fuelLoaded) return; fuelLoaded = true;
-  const where = "(Gas='G' OR Diesel IN ('D','Y')) AND Fuel_Access='Public Fuel Dock' AND Status LIKE 'Op%'";
-  try {
-    const j = await getJSON('https://gis.myfwc.com/hosting/rest/services/Open_Data/Marinas_Florida/MapServer/6/query?where='+encodeURIComponent(where)+'&outFields=Name,Street,City,Phone,Gas,Diesel,Wat_Name&outSR=4326&f=geojson');
-    (j.features||[]).forEach(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates, fuels = [p.Gas==='G'?'Gas':'', /^[DY]$/.test(p.Diesel||'')?'Diesel':''].filter(Boolean).join(' · ');
-      const tel = /\d{3}.*\d{4}/.test(p.Phone||'') ? `<a href="tel:${esc(p.Phone.replace(/[^\d+]/g,''))}">${esc(p.Phone)}</a>` : '';
-      OV.fuel.addLayer(L.marker([la,ln], {pane:'fuel', icon:FUEL_ICON, title:p.Name||'Public fuel dock', keyboard:false})
-        .bindPopup(`<b>${esc(p.Name||'Public fuel dock')}</b><br><span class="fuel-tag">${fuels||'Fuel'}</span> public fuel dock${p.Wat_Name?'<br>On '+esc(p.Wat_Name):''}${p.Street?'<br>'+esc(p.Street)+(p.City?', '+esc(p.City):''):''}<br>${tel}${tel?' · ':''}<a href="https://maps.apple.com/?daddr=${la},${ln}" target="_blank" rel="noopener">Directions</a><br><small>Hours and prices not listed. Call ahead.</small>`)); });
-  } catch(e){ fuelLoaded = false; toast('Could not load fuel docks right now.'); }
+const OVS = ['labels','contours','fuel','ramps','oyster','reefs','hardbottom'];
+const LS = Object.assign({base:'sat', labels:true, contours:false, fuel:true, ramps:true, oyster:false, reefs:true, hardbottom:false}, store.get('sz2-layers', {}));
+const OV = {oyster:L.layerGroup(), reefs:L.layerGroup(), hardbottom:L.layerGroup()};
+// ---- places: public fuel docks (FWC marina inventory) and public boat ramps (FWC Boat Ramp Finder, via UF GeoPlan)
+map.createPane('places').style.zIndex = 460;
+const tc = t => String(t||'').toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase()).replace(/\b(Sr|Us|Cr|Fwc|Ne|Nw|Se|Sw)\b/g, m => m.toUpperCase());
+const blank = v => v == null || !String(v).trim() || /^(unknown|n\/?a|none|0)$/i.test(String(v).trim());
+const telLink = p => { const d = String(p||'').replace(/[^\d]/g,''); return d.length >= 10 ? `<a href="tel:${d.slice(-10)}">${esc(String(p).trim())}</a>` : ''; };
+const ICONS = {
+  fuel:'<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12"/><path d="M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/>',
+  ramp:'<path d="M3 17l18-7"/><path d="M7 13.5l2.2-4.3h6.5l1.6 2"/><circle cx="7" cy="19" r="1.6"/><path d="M2 21h20"/>'
+};
+const placeIcon = k => L.divIcon({className:'pl-ic pl-'+k, iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-14],
+  html:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`});
+// popups pan clear of the header card and the dock
+const POP = () => ({maxWidth:290, minWidth:240, autoPanPaddingTopLeft:L.point(16, ($('app').querySelector('.top')?.offsetHeight||140)+30), autoPanPaddingBottomRight:L.point(70, (document.querySelector('.dock')?.offsetHeight||160)+16)});
+const prow = (label, val) => val ? `<div class="pc-row"><span>${label}</span><b>${val}</b></div>` : '';
+const pcard = (title, sub, rows, foot) => `<div class="pc"><div class="pc-t">${esc(title)}</div>${sub?`<div class="pc-s">${sub}</div>`:''}<div class="pc-rows">${rows}</div>${foot||''}</div>`;
+const dirLink = (la,ln) => `<a class="pc-btn" href="https://maps.apple.com/?daddr=${la},${ln}" target="_blank" rel="noopener">Directions</a>`;
+// only the markers near the view are put on the map, so ~1,900 points stay light on a phone
+function PlaceSet(kind, minZoom){ const all = [], layer = L.layerGroup(); let loaded = false, loading = null;
+  const sync = () => { if (!map.hasLayer(layer)) return; const b = map.getBounds().pad(0.3), on = map.getZoom() >= minZoom;
+    all.forEach(m => { const want = on && b.contains(m.getLatLng()); if (want && !layer.hasLayer(m)) layer.addLayer(m); else if (!want && layer.hasLayer(m)) layer.removeLayer(m); }); };
+  map.on('moveend', sync);
+  return {layer, all, sync, kind, load(fn){ if (loaded) { sync(); return; } if (loading) return; loading = fn().then(ms => { ms.forEach(m => all.push(m)); loaded = true; sync(); }).catch(() => toast('Could not load '+(kind==='fuel'?'fuel docks':'boat ramps')+' right now.')).finally(() => loading = null); }};
 }
+const FUEL = PlaceSet('fuel', 9), RAMPS = PlaceSet('ramp', 10);
+// hours and VHF are not in the state data; look them up in OpenStreetMap when a fuel dock is opened (best effort)
+const OSM_CACHE = new Map();
+async function osmExtras(la, ln){
+  const key = la.toFixed(4)+','+ln.toFixed(4); if (OSM_CACHE.has(key)) return OSM_CACHE.get(key);
+  const q = `[out:json][timeout:12];(nwr(around:220,${la},${ln})["leisure"="marina"];nwr(around:220,${la},${ln})["amenity"="fuel"];nwr(around:220,${la},${ln})["waterway"="fuel"];nwr(around:220,${la},${ln})["seamark:type"~"harbour|small_craft_facility"];);out tags center;`;
+  let out = {};
+  for (const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+    try { const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 9000);
+      const r = await fetch(host, {method:'POST', body:'data='+encodeURIComponent(q), headers:{'Content-Type':'application/x-www-form-urlencoded'}, signal:ctl.signal}); clearTimeout(t);
+      if (!r.ok) continue; const j = await r.json();
+      for (const e of (j.elements||[])){ const g = e.tags||{};
+        out.hours = out.hours || g.opening_hours || g['seamark:small_craft_facility:opening_hours'];
+        out.vhf = out.vhf || g.vhf || g['vhf_channel'] || g['contact:vhf'] || g['communication:vhf'] || g['seamark:communication:channel'] || g['seamark:radio_station:channel'];
+        out.phone = out.phone || g.phone || g['contact:phone'];
+        out.web = out.web || g.website || g['contact:website']; }
+      break;
+    } catch(e){}
+  }
+  OSM_CACHE.set(key, out); return out;
+}
+const prettyHours = h => esc(h).replace(/\bMo\b/g,'Mon').replace(/\bTu\b/g,'Tue').replace(/\bWe\b/g,'Wed').replace(/\bTh\b/g,'Thu').replace(/\bFr\b/g,'Fri').replace(/\bSa\b/g,'Sat').replace(/\bSu\b/g,'Sun').replace(/\bPH\b/g,'holidays').replace(/;\s*/g,'<br>').replace(/^24\/7$/,'Open 24 hours');
+const prettyVhf = v => 'Ch '+esc(String(v).replace(/^\s*(ch(annel)?\.?\s*)/i,'').replace(/;\s*/g,', '));
+function fuelCard(p, la, ln, x){
+  const fuels = [p.Gas==='G'?'Gas':'', /^[DY]$/.test(p.Diesel||'')?'Diesel':''].filter(Boolean).join(' + ') || 'Fuel';
+  const phone = telLink(p.Phone) || (x && x.phone ? telLink(x.phone) : '');
+  const hours = x === null ? '<i>Checking…</i>' : (x && x.hours ? prettyHours(x.hours) : '<i>Not listed</i>');
+  const vhf = x === null ? '<i>Checking…</i>' : (x && x.vhf ? prettyVhf(x.vhf) : '<i>Not listed</i>');
+  const web = x && x.web ? ` <a class="pc-btn ghost" href="${esc(/^https?:/.test(x.web)?x.web:'https://'+x.web)}" target="_blank" rel="noopener">Website</a>` : '';
+  return pcard(p.Name || 'Public fuel dock', `<span class="pc-tag">${fuels}</span> Public fuel dock`,
+    prow('Phone', phone) + prow('Hours', hours) + prow('VHF', vhf) + prow('Water', p.Wat_Name ? esc(tc(p.Wat_Name)) : '') + prow('Address', p.Street ? esc(p.Street)+(p.City?', '+esc(p.City):'') : ''),
+    `<div class="pc-foot">${dirLink(la,ln)}${web}</div><div class="pc-note">Hours and VHF from OpenStreetMap when available. Call ahead.</div>`);
+}
+function loadFuel(){ FUEL.load(async () => {
+  const where = "(Gas='G' OR Diesel IN ('D','Y')) AND Fuel_Access='Public Fuel Dock' AND Status LIKE 'Op%'";
+  const j = await getJSON('https://gis.myfwc.com/hosting/rest/services/Open_Data/Marinas_Florida/MapServer/6/query?where='+encodeURIComponent(where)+'&outFields=Name,Street,City,Phone,Gas,Diesel,Wat_Name&outSR=4326&f=geojson');
+  const icon = placeIcon('fuel');
+  return (j.features||[]).map(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates;
+    const m = L.marker([la,ln], {pane:'places', icon, title:p.Name||'Public fuel dock', keyboard:false}).bindPopup(fuelCard(p, la, ln, null), POP());
+    m.on('popupopen', async () => { const x = await osmExtras(la, ln); m.setPopupContent(fuelCard(p, la, ln, x)); });
+    return m; });
+}); }
+function rampCard(p, la, ln){
+  const fee = p.ISFEEREQUI === 'YES' ? (p.FEEAMOUNT > 0 ? '$'+(+p.FEEAMOUNT).toFixed(p.FEEAMOUNT % 1 ? 2 : 0) : 'Yes') : (p.ISFEEREQUI === 'NO' ? 'Free' : '');
+  const lanes = p.TOTALLANES > 0 ? p.TOTALLANES + (p.TOTALLANES > 1 ? ' lanes' : ' lane') : '';
+  const notes = !blank(p.OPERATIONA) ? p.OPERATIONA : (!blank(p.RAMPSTATUS) ? p.RAMPSTATUS : '');
+  const note = notes ? `<div class="pc-desc">${esc(notes.charAt(0) + notes.slice(1).toLowerCase())}</div>` : '';
+  const web = !blank(p.URL) ? ` <a class="pc-btn ghost" href="${esc(p.URL.trim())}" target="_blank" rel="noopener">Website</a>` : '';
+  return pcard(tc(p.RAMPNAME) || 'Public boat ramp', `Public boat ramp${p.ACCESSTYPE && /COMMERCIAL/.test(p.ACCESSTYPE) ? ' · privately run' : ''}`,
+    prow('Hours', !blank(p.HOURS) ? esc(tc(p.HOURS)).replace(/\b(Am|Pm)\b/g, m => m.toUpperCase()) : '<i>Not listed</i>') + prow('Fee', fee) + prow('Ramp', [lanes, p.TRAILER > 0 ? p.TRAILER+' trailer spots' : ''].filter(Boolean).join(' · '))
+    + prow('Restroom', p.ISRESTROOM === 'YES' ? 'Yes' : p.ISRESTROOM === 'NO' ? 'No' : '') + prow('Phone', telLink(p.CONTACTPHO))
+    + prow('Water', !blank(p.WATERBODYN) ? esc(tc(p.WATERBODYN)) : '') + prow('Address', !blank(p.STREET1) ? esc(tc(p.STREET1))+(p.CITY?', '+esc(tc(p.CITY)):'') : ''),
+    note + `<div class="pc-foot">${dirLink(la,ln)}${web}</div>`);
+}
+function loadRamps(){ RAMPS.load(async () => {
+  const where = "ACCESSTYPE LIKE '%GENERAL PUBLIC%' AND STATUS='OPEN FOR BUSINESS' AND RAMPTYPE IN ('STAND ALONE RAMP','BOAT RAMP WITHIN MARINA')";
+  const fields = 'RAMPNAME,STREET1,CITY,HOURS,CONTACTPHO,ISFEEREQUI,FEEAMOUNT,TOTALLANES,TRAILER,ISRESTROOM,WATERBODYN,ACCESSTYPE,OPERATIONA,RAMPSTATUS,URL';
+  const base = 'https://callisto.at.geoplan.ufl.edu/arcgis/rest/services/est/Coastal/MapServer/1/query?where='+encodeURIComponent(where)+'&outFields='+fields+'&outSR=4326&f=geojson';
+  const pages = await Promise.all([0,1000].map(off => getJSON(base+'&resultOffset='+off+'&resultRecordCount=1000')));
+  const icon = placeIcon('ramp');
+  return pages.flatMap(j => j.features||[]).map(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates;
+    return L.marker([la,ln], {pane:'places', icon, title:tc(p.RAMPNAME)||'Boat ramp', keyboard:false}).bindPopup(rampCard(p, la, ln), POP()); });
+}); }
+OV.fuel = FUEL.layer; OV.ramps = RAMPS.layer;
+map.on('popupopen', () => $('app').classList.add('pop-open')); map.on('popupclose', () => $('app').classList.remove('pop-open'));
 function applyLayers(){
   [sat, relief].forEach(b => map.hasLayer(b) && map.removeLayer(b));
   (LS.base==='relief' ? relief : sat).addTo(map);
@@ -263,8 +335,8 @@ function applyLayers(){
   OVS.forEach(k => $('ov-'+k).checked = !!LS[k]);
   LS.labels ? labels.addTo(map) : map.removeLayer(labels);
   if (LS.contours){ if (map.hasLayer(contours)) contours.redraw(); else contours.addTo(map); } else map.removeLayer(contours);
-  ['oyster','reefs','hardbottom','fuel'].forEach(k => LS[k] ? OV[k].addTo(map) : map.removeLayer(OV[k]));
-  if (LS.fuel) setTimeout(loadFuel);
+  ['oyster','reefs','hardbottom','fuel','ramps'].forEach(k => LS[k] ? OV[k].addTo(map) : map.removeLayer(OV[k]));
+  if (LS.fuel) setTimeout(loadFuel); if (LS.ramps) setTimeout(loadRamps);
   store.set('sz2-layers', LS);
 }
 document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { LS.base = b.dataset.base; applyLayers(); });
