@@ -95,6 +95,11 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .type-chips button{all:unset;cursor:pointer;padding:6px 11px;border-radius:999px;border:1px solid var(--line);font-size:13.5px;font-weight:600;color:var(--muted)}
 .type-chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#06211d}
 .type-chips button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fuel-ic{display:grid!important;place-items:center;width:26px;height:26px;border-radius:50%;background:#fff;color:#0b1f24;border:2px solid #0b1f24;box-shadow:0 2px 6px rgba(0,0,0,.45);box-sizing:border-box}
+.fuel-ic.sw-ic{width:18px;height:18px;border-width:1.5px;box-shadow:none}
+.fuel-tag{color:var(--accent);font-weight:600}
+.leaflet-popup-content a{color:var(--accent);font-weight:600}
+.leaflet-popup-content small{color:var(--muted)}
 .src{margin:0;color:var(--muted);font-size:11.5px;line-height:1.4}
 
 /* dock */
@@ -230,11 +235,12 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
     <span class="eyebrow">Overlays</span>
     <label class="tog"><input type="checkbox" id="ov-labels"><span>Place names</span><small></small></label>
     <label class="tog"><input type="checkbox" id="ov-contours"><span>Depth contours</span><small>zoom in</small></label>
+    <label class="tog"><input type="checkbox" id="ov-fuel"><span>Public fuel docks</span><i class="fuel-ic sw-ic" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg></i></label>
     <label class="tog"><input type="checkbox" id="ov-oyster"><span>Oyster beds</span><i class="sw" style="background:#e8b45a"></i></label>
     <label class="tog"><input type="checkbox" id="ov-reefs"><span>Man-made reefs</span><i class="sw" style="background:#ff8a3d;border-radius:50%;width:12px"></i></label>
     <label class="tog"><input type="checkbox" id="ov-hardbottom"><span>Natural reef and hard bottom</span><i class="sw" style="background:#c48cff"></i></label>
     <div class="depth-key" id="depthKey" hidden><div class="grad"></div><div class="ticks"><span>0</span><span>6</span><span>15</span><span>22</span><span>35</span><span>50</span><span>70+ ft</span></div></div>
-    <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
+    <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom, public fuel docks) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
   </div>
   <section class="dock collapsed" id="dock" aria-label="Fishing spots">
     <button class="dock-head" id="dockHead" type="button" aria-expanded="false" aria-controls="body">

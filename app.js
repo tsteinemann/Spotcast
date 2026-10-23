@@ -236,9 +236,25 @@ function paintTypeChips(){
     ZONES.forEach(z => { if (z.type !== k) return; SHOW.has(k) ? zoneLayer.addLayer(z.layer) : zoneLayer.removeLayer(z.layer); });
     if (sel != null && !SHOW.has(ZONES[sel].type)) selectZone(null); paintTypeChips(); refresh(); });
 }
-const OVS = ['labels','contours','oyster','reefs','hardbottom'];
-const LS = Object.assign({base:'sat', labels:true, contours:false, oyster:false, reefs:true, hardbottom:false}, store.get('sz2-layers', {}));
-const OV = {oyster:L.layerGroup(), reefs:L.layerGroup(), hardbottom:L.layerGroup()};
+const OVS = ['labels','contours','fuel','oyster','reefs','hardbottom'];
+const LS = Object.assign({base:'sat', labels:true, contours:false, fuel:true, oyster:false, reefs:true, hardbottom:false}, store.get('sz2-layers', {}));
+const OV = {oyster:L.layerGroup(), reefs:L.layerGroup(), hardbottom:L.layerGroup(), fuel:L.layerGroup()};
+// public fuel docks statewide (FWC marina inventory: "Public Fuel Dock" selling gas or diesel, operational); ~350 points, loaded once
+map.createPane('fuel').style.zIndex = 460;
+let fuelLoaded = false;
+const FUEL_ICON = L.divIcon({className:'fuel-ic', iconSize:[26,26], iconAnchor:[13,13], popupAnchor:[0,-12],
+  html:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12"/><path d="M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg>'});
+async function loadFuel(){
+  if (fuelLoaded) return; fuelLoaded = true;
+  const where = "(Gas='G' OR Diesel IN ('D','Y')) AND Fuel_Access='Public Fuel Dock' AND Status LIKE 'Op%'";
+  try {
+    const j = await getJSON('https://gis.myfwc.com/hosting/rest/services/Open_Data/Marinas_Florida/MapServer/6/query?where='+encodeURIComponent(where)+'&outFields=Name,Street,City,Phone,Gas,Diesel,Wat_Name&outSR=4326&f=geojson');
+    (j.features||[]).forEach(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates, fuels = [p.Gas==='G'?'Gas':'', /^[DY]$/.test(p.Diesel||'')?'Diesel':''].filter(Boolean).join(' · ');
+      const tel = /\d{3}.*\d{4}/.test(p.Phone||'') ? `<a href="tel:${esc(p.Phone.replace(/[^\d+]/g,''))}">${esc(p.Phone)}</a>` : '';
+      OV.fuel.addLayer(L.marker([la,ln], {pane:'fuel', icon:FUEL_ICON, title:p.Name||'Public fuel dock', keyboard:false})
+        .bindPopup(`<b>${esc(p.Name||'Public fuel dock')}</b><br><span class="fuel-tag">${fuels||'Fuel'}</span> public fuel dock${p.Wat_Name?'<br>On '+esc(p.Wat_Name):''}${p.Street?'<br>'+esc(p.Street)+(p.City?', '+esc(p.City):''):''}<br>${tel}${tel?' · ':''}<a href="https://maps.apple.com/?daddr=${la},${ln}" target="_blank" rel="noopener">Directions</a><br><small>Hours and prices not listed. Call ahead.</small>`)); });
+  } catch(e){ fuelLoaded = false; toast('Could not load fuel docks right now.'); }
+}
 function applyLayers(){
   [sat, relief].forEach(b => map.hasLayer(b) && map.removeLayer(b));
   (LS.base==='relief' ? relief : sat).addTo(map);
@@ -247,7 +263,8 @@ function applyLayers(){
   OVS.forEach(k => $('ov-'+k).checked = !!LS[k]);
   LS.labels ? labels.addTo(map) : map.removeLayer(labels);
   if (LS.contours){ if (map.hasLayer(contours)) contours.redraw(); else contours.addTo(map); } else map.removeLayer(contours);
-  ['oyster','reefs','hardbottom'].forEach(k => LS[k] ? OV[k].addTo(map) : map.removeLayer(OV[k]));
+  ['oyster','reefs','hardbottom','fuel'].forEach(k => LS[k] ? OV[k].addTo(map) : map.removeLayer(OV[k]));
+  if (LS.fuel) setTimeout(loadFuel);
   store.set('sz2-layers', LS);
 }
 document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { LS.base = b.dataset.base; applyLayers(); });
