@@ -1,5 +1,5 @@
-const V = 'spotcast-v1';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'stations.json', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+const V = 'spotcast-v2';
+const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'stations.json', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js'];
@@ -14,7 +14,7 @@ self.addEventListener('fetch', e => {
   const r = e.request; if (r.method !== 'GET') return;
   const u = new URL(r.url);
   const isTile = /arcgisonline\.com\/ArcGIS\/rest\/services\/.*\/tile\//.test(r.url) || r.url.includes('/exportImage?');
-  const isData = /weather\.gov|tidesandcurrents\.noaa\.gov|gis\.myfwc\.com|geocode\.arcgis\.com|nominatim/.test(u.host);
+  const isData = /weather\.gov|tidesandcurrents\.noaa\.gov|gis\.myfwc\.com|services1\.arcgis\.com|geocode\.arcgis\.com|nominatim/.test(u.host);
   if (isTile){
     e.respondWith(caches.open('spotcast-tiles').then(async c => { const hit = await c.match(r); if (hit) return hit;
       const res = await fetch(r); if (res.ok || res.type === 'opaque'){ c.put(r, res.clone()); if (Math.random() < .05) trim('spotcast-tiles', 2500); } return res; }));
