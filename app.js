@@ -605,8 +605,9 @@ async function loadConditions(c){
   if (seq !== condSeq) return;
   TZ = tz; buildClock();
   // wind per hour
-  const P = (periods||[]).map(p => { const sp = (p.windSpeed||'0').match(/\d+/g)||['0']; return {t:Date.parse(p.startTime), ws:Math.max(...sp.map(Number)), wd:DIR_DEG[p.windDirection] ?? 0, temp:p.temperature}; });
-  base.wx = HRS.map(({t}) => { if (!P.length) return [10,90,null]; let b=P[0]; for (const p of P) if (Math.abs(p.t-t) < Math.abs(b.t-t)) b=p; return [b.ws, b.wd, b.temp]; });
+  const P = (periods||[]).map(p => { const sp = (p.windSpeed||'0').match(/\d+/g)||['0']; return {t:Date.parse(p.startTime), ws:Math.max(...sp.map(Number)), wd:DIR_DEG[p.windDirection] ?? 0, temp:p.temperature, pop:(p.probabilityOfPrecipitation||{}).value ?? 0, sf:p.shortForecast||''}; });
+  // per hour: [wind mph, wind dir, temp, rain chance %, short forecast, forecast covers this hour]
+  base.wx = HRS.map(({t}) => { if (!P.length) return [10,90,null,0,'',false]; let b=P[0]; for (const p of P) if (Math.abs(p.t-t) < Math.abs(b.t-t)) b=p; return [b.ws, b.wd, b.temp, b.pop, b.sf, Math.abs(b.t-t) <= 2*3600e3]; });
   base.noWind = !P.length;
   // sun and moon per hour
   const ev = {sunrise:[], sunset:[], major:[], minor:[]}, step = 1/6; let pS=null, pM=null, ppM=null;
@@ -762,13 +763,14 @@ function paintBody(){
   if (!vis.length){ el.innerHTML = cellsBusy.size ? `<div class="eyebrow">Finding spots in view</div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:85%"></div>` : `<div class="empty"><b>No mapped spots in view</b>Pan to the coast or zoom out a little. Spots come from passes, bridges, drop-offs, flats, mangroves, oyster bars, docks and reefs.</div>${installHtml()}`; wireInstall(); return; }
   const ranked = vis.map(z => ({z, s:score(z.k,cur)})).sort((a,b) => b.s.total-a.s.total);
   const counts = {}; vis.forEach(z => counts[z.type] = (counts[z.type]||0)+1);
-  el.innerHTML = `<div class="list-head"><span class="eyebrow">${vis.length} spots in view · best at ${hourLabel(cur)}</span><span class="legend">${TIER.map(t=>`<span class="t-${t[1]}"><i class="dot"></i>${t[2]}</span>`).join('')}</span></div>
+  el.innerHTML = `<button type="button" class="trip-btn" id="tripBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Plan a trip, up to a week out</button><div class="list-head"><span class="eyebrow">${vis.length} spots in view · best at ${hourLabel(cur)}</span><span class="legend">${TIER.map(t=>`<span class="t-${t[1]}"><i class="dot"></i>${t[2]}</span>`).join('')}</span></div>
     <ol class="rank">${ranked.slice(0,30).map((r,n)=>`<li><button type="button" class="t-${r.s.tier[1]}" data-k="${r.z.k}"><span class="n">${n+1}</span><span class="nm">${esc(r.z.name)} <span class="kind">· ${r.z.label}</span><span class="why">${esc(shortWhy(r.s))}</span></span><span class="pill">${r.s.tier[2]}</span></button></li>`).join('')}</ol>
     ${ranked.length>30?`<p class="note">Showing the top 30. Zoom in to narrow the list.</p>`:''}
     <p class="note">${KIND_ORDER.filter(k=>counts[k]).map(k=>`${counts[k]} ${TYPES[k].label.toLowerCase()}`).join(' · ')}</p>
     ${installHtml()}
     <p class="note">Spots are generated from FWC habitat maps, FDOT bridges and the NOAA depth model, then rated each hour from NOAA tides, the NWS wind forecast, moon and sun. A starting point, not local knowledge. Not for navigation.</p>`;
   el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => selectZone(+b.dataset.k));
+  $('tripBtn').onclick = () => typeof openPlanner === 'function' && openPlanner();
   wireInstall();
 }
 function paintSpot(){
@@ -899,7 +901,7 @@ $('q').addEventListener('input', e => {
 $('searchForm').addEventListener('submit', e => { e.preventDefault(); const q = $('q').value.trim(); if (q) go(q); });
 function openSearch(open){ $('searchForm').hidden = !open; $('searchBtn').hidden = open; $('searchBtn').setAttribute('aria-expanded', open); if (open){ $('layersPanel').hidden = true; setTimeout(() => $('q').focus(), 30); } else { $('q').value = ''; $('sugg').hidden = true; } }
 $('searchBtn').onclick = () => openSearch(true);
-$('closeSearch').onclick = () => openSearch(false);
+$('closeSearch').onclick = () => { openSearch(false); if (typeof planPending !== 'undefined') planPending = false; };
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('searchForm').hidden) openSearch(false); });
 async function go(text, magicKey){
   $('sugg').hidden = true; $('q').blur();

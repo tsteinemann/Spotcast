@@ -112,6 +112,58 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .pl-ramp{background:#1d6e8c;color:#fff;border:2px solid #fff}
 .pl-ic.sw-ic{width:18px;height:18px;border-width:1.5px;box-shadow:none}
 .pop-open .loadbar{display:none!important}
+.link-btn{all:unset;cursor:pointer;color:var(--accent);font-weight:600;font-size:14px}
+.link-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.trip-btn{all:unset;box-sizing:border-box;cursor:pointer;width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;margin:0 0 12px;border-radius:12px;border:1px solid var(--accent);color:var(--accent);font-family:var(--display);font-weight:700;font-size:16px;background:rgba(98,216,199,.08)}
+/* trip planner */
+.planner{position:absolute;inset:0;z-index:1500;background:rgba(4,12,14,.55);display:flex;align-items:flex-end}
+.pl-sheet{width:100%;max-height:calc(100% - env(safe-area-inset-top,0px) - 24px);background:var(--panel);border-radius:20px 20px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;animation:rise .3s cubic-bezier(.2,.8,.2,1) both}
+.pl-top{display:flex;justify-content:space-between;align-items:center;padding:14px 16px 8px}
+.pl-top h2{margin:0;font-family:var(--display);font-weight:700;font-size:24px}
+.pl-body{overflow-y:auto;padding:4px 16px calc(20px + env(safe-area-inset-bottom,0px));display:grid;gap:8px;align-content:start;-webkit-overflow-scrolling:touch}
+.pl-body .eyebrow small{text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:500}
+.pl-where{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--panel-2);margin-bottom:6px}
+.pl-where b{font-family:var(--display);font-size:17px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-days{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:4px}
+.pl-days button{all:unset;box-sizing:border-box;cursor:pointer;text-align:center;padding:7px 2px;border-radius:10px;background:var(--panel-2);border:1px solid transparent;display:grid;gap:1px}
+.pl-days span{font-family:var(--display);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.pl-days b{font-family:var(--display);font-size:13px}
+.pl-days button[aria-pressed="true"]{background:var(--accent);color:#06211d}
+.pl-days button[aria-pressed="true"] span{color:#06211d}
+.pl-days button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.plan-btn:disabled{opacity:.5}
+#planOut{display:grid;gap:12px;margin-top:6px}
+.pd{border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:10px;background:#122529;animation:rise .35s cubic-bezier(.2,.8,.2,1) both}
+.pd-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pd-h b{font-family:var(--display);font-size:19px}
+.pd-c{display:grid;grid-template-columns:62px 1fr;gap:4px 10px;margin:0;font-size:13.5px}
+.pd-c dt{color:var(--muted)} .pd-c dd{margin:0}
+.pw{border-left:3px solid var(--accent);padding:2px 0 2px 12px;display:grid;gap:4px}
+.pw-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pw-h b{font-family:var(--display);font-size:17px}
+.pw-h .pill{font-size:11px;padding:2px 8px}
+.pw-spot{font-weight:600}
+.pw-line{display:grid;grid-template-columns:56px 1fr;gap:8px;font-size:13.5px;line-height:1.4}
+.pw-line span{color:var(--muted)}
+.pw-go{all:unset;cursor:pointer;justify-self:start;color:var(--accent);font-weight:600;font-size:13.5px;margin-top:2px}
+.pl-sum{display:grid;gap:2px;padding:12px 14px;border-radius:14px;background:rgba(98,216,199,.1);border:1px solid var(--accent)}
+.pl-sum b{font-family:var(--display);font-size:19px}
+.pl-sum span:last-child{color:var(--muted);font-size:13.5px}
+.pl-foot{display:grid;gap:8px;justify-items:start}
+/* intro */
+.intro{position:absolute;inset:0;z-index:1800;background:rgba(4,12,14,.72);display:grid;place-items:center;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.in-card{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px 18px 16px;display:grid;gap:14px;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.in-slide{display:grid;gap:10px;min-height:340px;align-content:start}
+.in-slide.in-anim{animation:rise .35s cubic-bezier(.2,.8,.2,1) both}
+.in-art svg{display:block;width:100%;height:auto}
+.in-slide h2{margin:4px 0 0;font-family:var(--display);font-weight:700;font-size:26px;line-height:1.1;text-wrap:balance}
+.in-slide p{margin:0;color:var(--muted);font-size:15.5px;line-height:1.5}
+.in-dots{display:flex;gap:6px;justify-content:center}
+.in-dots i{width:7px;height:7px;border-radius:4px;background:var(--line);transition:width .2s}
+.in-dots i.on{width:22px;background:var(--accent)}
+.in-btns{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.in-next{width:auto;margin:0;padding:12px 26px}
+@media (min-width:900px){.planner{align-items:center;justify-content:center}.pl-sheet{width:520px;max-height:86%;border-radius:20px;border:1px solid var(--line)}}
 .place{position:absolute;z-index:820;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--dock-h,120px) + 12px);max-height:calc(100% - var(--dock-h,120px) - 180px);overflow:auto;padding:14px 16px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:rise .25s cubic-bezier(.2,.8,.2,1) both}
 .place .place-x{position:absolute;top:10px;right:10px}
 .place .pc-t{padding-right:40px}
@@ -252,6 +304,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
     </div>
   </div>
   <div class="rail">
+    <div class="stack"><button class="ctl" id="planBtn2" type="button" aria-label="Plan a trip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M9.5 14.5l2 2 3.5-3.5"/></svg></button></div>
     <div class="stack">
       <button class="ctl" id="layersBtn" type="button" aria-label="Map layers" aria-expanded="false" aria-controls="layersPanel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></button>
       <button class="ctl" id="locate" type="button" aria-label="Go to my location"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
@@ -277,6 +330,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
     <label class="tog"><input type="checkbox" id="ov-reefs"><span>Man-made reefs</span><i class="sw" style="background:#ff8a3d;border-radius:50%;width:12px"></i></label>
     <label class="tog"><input type="checkbox" id="ov-hardbottom"><span>Natural reef and hard bottom</span><i class="sw" style="background:#c48cff"></i></label>
     <div class="depth-key" id="depthKey" hidden><div class="grad"></div><div class="ticks"><span>0</span><span>6</span><span>15</span><span>22</span><span>35</span><span>50</span><span>70+ ft</span></div></div>
+    <button type="button" class="link-btn" id="introAgain">Show the intro again</button>
     <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom, public fuel docks, boat ramps via UF GeoPlan), OpenStreetMap (fuel dock hours and VHF) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
   </div>
   <section class="dock collapsed" id="dock" aria-label="Fishing spots">
@@ -291,6 +345,26 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
       <div class="scrub-labels"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>
     </div>
   </section>
+  <div class="planner" id="planner" hidden role="dialog" aria-modal="true" aria-labelledby="planTitle">
+    <div class="pl-sheet">
+      <div class="pl-top"><h2 id="planTitle">Plan a trip</h2><button class="close" id="plannerClose" type="button" aria-label="Close trip planner"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div class="pl-body">
+        <span class="eyebrow">Where</span>
+        <div class="pl-where"><b id="planWhere">—</b><button type="button" class="link-btn" id="planChange">Change</button></div>
+        <span class="eyebrow">Which days <small>up to a week out</small></span>
+        <div class="pl-days" id="planDays" role="group" aria-label="Trip days"></div>
+        <button class="plan-btn" type="button" id="planBuild">Build trip plan</button>
+        <div id="planOut" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+  <div class="intro" id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="introTitle">
+    <div class="in-card">
+      <div class="in-slide" id="introSlide"></div>
+      <div class="in-dots" id="introDots" aria-hidden="true"></div>
+      <div class="in-btns"><button type="button" class="link-btn" id="introSkip">Skip</button><button type="button" class="plan-btn in-next" id="introNext">Next</button></div>
+    </div>
+  </div>
   <div class="toast" id="toast" hidden></div>
 </div>
 
@@ -303,5 +377,7 @@ setTimeout(function(){ if (window.__scBoot) return; var t = document.getElementB
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
 <script src="app.js"></script>
+<script src="planner.js"></script>
+<script src="intro.js"></script>
 </body>
 </html>
