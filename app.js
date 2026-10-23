@@ -595,8 +595,24 @@ function paintHead(){
   $('dockHead').setAttribute('aria-expanded', !$('dock').classList.contains('collapsed'));
 }
 let dockOpen = store.get('sz3-dock-open', false);
-function setDock(open){ $('dock').classList.toggle('collapsed', !open); paintHead(); }
-$('dockHead').onclick = () => { if (sel != null){ selectZone(null); return; } dockOpen = $('dock').classList.contains('collapsed'); store.set('sz3-dock-open', dockOpen); setDock(dockOpen); refresh(); };
+function setDock(open){ $('dock').classList.toggle('collapsed', !open); $('app').classList.toggle('dock-open', !!open); if (open) $('layersPanel').hidden = true; paintHead(); }
+function toggleDock(want){ const isOpen = !$('dock').classList.contains('collapsed'); if (want === isOpen) return;
+  if (sel != null && !want){ selectZone(null); if (!dockOpen) return; dockOpen = false; store.set('sz3-dock-open', false); setDock(false); refresh(); return; }
+  dockOpen = want; store.set('sz3-dock-open', dockOpen); setDock(dockOpen); refresh(); }
+// tap the header to open/close; drag the grab bar up to open, down to close (window-shade)
+(function(){
+  const head = $('dockHead'), dock = $('dock'); let y0 = null, dy = 0, moved = false;
+  head.addEventListener('pointerdown', e => { y0 = e.clientY; dy = 0; moved = false; head.setPointerCapture(e.pointerId); dock.style.transition = 'none'; });
+  head.addEventListener('pointermove', e => { if (y0 === null) return; dy = e.clientY - y0; if (Math.abs(dy) > 6) moved = true;
+    const open = !dock.classList.contains('collapsed');
+    if (open && dy > 0) dock.style.transform = `translateY(${dy}px)`;
+    if (!open && dy < -24){ y0 = null; dock.style.transform = ''; toggleDock(true); } });
+  const end = () => { if (y0 === null) return; y0 = null; dock.style.transition = 'transform .18s'; dock.style.transform = '';
+    const open = !dock.classList.contains('collapsed');
+    if (!moved){ if (sel != null) selectZone(null); else toggleDock(!open); } else if (open && dy > 50) toggleDock(false); };
+  head.addEventListener('pointerup', end); head.addEventListener('pointercancel', () => { y0 = null; dock.style.transform = ''; });
+  head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleDock(dock.classList.contains('collapsed')); } });
+})();
 setDock(dockOpen);
 function paintBody(){
   const el = $('body');
@@ -733,8 +749,8 @@ $('q').addEventListener('input', e => {
     } catch(e){ $('sugg').hidden = true; } }, 220);
 });
 $('searchForm').addEventListener('submit', e => { e.preventDefault(); const q = $('q').value.trim(); if (q) go(q); });
-function openSearch(open){ $('searchForm').hidden = !open; $('searchBtn').setAttribute('aria-expanded', open); if (open){ $('layersPanel').hidden = true; setTimeout(() => $('q').focus(), 30); } else { $('q').value = ''; $('sugg').hidden = true; } }
-$('searchBtn').onclick = () => openSearch($('searchForm').hidden);
+function openSearch(open){ $('searchForm').hidden = !open; $('searchBtn').hidden = open; $('searchBtn').setAttribute('aria-expanded', open); if (open){ $('layersPanel').hidden = true; setTimeout(() => $('q').focus(), 30); } else { $('q').value = ''; $('sugg').hidden = true; } }
+$('searchBtn').onclick = () => openSearch(true);
 $('closeSearch').onclick = () => openSearch(false);
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('searchForm').hidden) openSearch(false); });
 async function go(text, magicKey){
@@ -762,7 +778,7 @@ $('locate').onclick = locate;
 // clears the home indicator, so the dock drops its own bottom padding there (the strip is painted the panel colour).
 function fitHeight(){
   const sa = matchMedia('(display-mode: standalone)').matches || navigator.standalone, portrait = innerHeight >= innerWidth;
-  document.documentElement.classList.toggle('vp-short', !!(sa && portrait && screen.height - innerHeight > 20));
+  document.documentElement.classList.toggle('vp-short', !!(sa && portrait && screen.height - $('app').offsetHeight > 20));
   map.invalidateSize();
 }
 // keep the map credit just above the dock
