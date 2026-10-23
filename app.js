@@ -243,7 +243,7 @@ function applyLayers(){
 }
 document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { LS.base = b.dataset.base; applyLayers(); });
 OVS.forEach(k => $('ov-'+k).onchange = e => { LS[k] = e.target.checked; applyLayers(); });
-$('layersBtn').onclick = () => { const p=$('layersPanel'); p.hidden = !p.hidden; $('layersBtn').setAttribute('aria-expanded', !p.hidden); };
+$('layersBtn').onclick = () => { const p=$('layersPanel'); p.hidden = !p.hidden; $('layersBtn').setAttribute('aria-expanded', !p.hidden); if (!p.hidden && typeof openSearch === 'function') openSearch(false); };
 $('zin').onclick = () => map.zoomIn(); $('zout').onclick = () => map.zoomOut();
 applyLayers();
 
@@ -466,7 +466,7 @@ function onMove(){
   }, 300);
 }
 map.on('moveend', onMove);
-map.on('click', () => { $('layersPanel').hidden = true; $('sugg').hidden = true; });
+map.on('click', () => { $('layersPanel').hidden = true; if (!$('searchForm').hidden) openSearch(false); });
 function setLoading(){ $('loadBar').hidden = cellsBusy.size === 0; }
 let refreshT = null; const refreshSoon = () => { clearTimeout(refreshT); refreshT = setTimeout(refresh, 250); };
 
@@ -492,6 +492,22 @@ function paintStatus(){
   $('cond').innerHTML = `<span>Wind <b>${COND.noWind?'n/a':card(wd)+' '+ws+' mph'}</b></span>${tide}${COND.waterTemp?`<span>Water <b>${COND.waterTemp.toFixed(0)}°</b></span>`:(temp!=null?`<span>Air <b>${temp}°</b></span>`:'')}<span>Moon <b>${Math.round(hr.moon*100)}%</b></span>`;
 }
 const KIND_ORDER = ['pass','bridge','dropoff','flat','mangrove','oyster','dock','reef'];
+function paintHead(){
+  const el = $('dockSummary'); let html;
+  if (!COND) html = 'Loading conditions…';
+  else if (sel != null){ const z = ZONES[sel], s = score(sel,cur); html = `<span class="t-${s.tier[1]}"><span class="pill">${s.tier[2]}</span></span><span class="nm1">${esc(z.name)}</span>`; }
+  else if (map.getZoom() < 11) html = '<b>Zoom in</b> to see spots';
+  else { const vis = visibleZones();
+    if (!vis.length) html = cellsBusy.size ? 'Finding spots in view…' : 'No mapped spots in view';
+    else { let best = vis[0], bs = score(best.k,cur); for (const z of vis){ const s = score(z.k,cur); if (s.total > bs.total){ best = z; bs = s; } }
+      html = `<b>${vis.length} spots</b><span>·</span><span class="t-${bs.tier[1]}"><span class="pill">${bs.tier[2]}</span></span><span class="nm1">${esc(best.name)}</span>`; } }
+  el.innerHTML = html;
+  $('dockHead').setAttribute('aria-expanded', !$('dock').classList.contains('collapsed'));
+}
+let dockOpen = store.get('sz3-dock-open', false);
+function setDock(open){ $('dock').classList.toggle('collapsed', !open); paintHead(); }
+$('dockHead').onclick = () => { if (sel != null){ selectZone(null); return; } dockOpen = $('dock').classList.contains('collapsed'); store.set('sz3-dock-open', dockOpen); setDock(dockOpen); refresh(); };
+setDock(dockOpen);
 function paintBody(){
   const el = $('body');
   if (!COND){ el.innerHTML = `<div class="eyebrow">Loading conditions</div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:85%"></div>`; return; }
@@ -608,13 +624,13 @@ $('bestBtn').onclick = () => { if (!COND) return; const vis = sel!=null ? [ZONES
 function setTime(i){ cur = clamp(i,0,H-1); refresh(); }
 function dockH(){ return document.querySelector('.dock').offsetHeight || Math.round(innerHeight*.46); }
 function selectZone(k){
-  sel = k; document.querySelector('.dock').classList.toggle('detail', k!=null); refresh();
+  sel = k; document.querySelector('.dock').classList.toggle('detail', k!=null); setDock(k!=null ? true : dockOpen); refresh();
   if (k!=null){ const z = ZONES[k], wide = matchMedia('(min-width:900px)').matches, bnds = z.layer.getBounds();
     map.fitBounds(bnds, wide ? {paddingTopLeft:[460,170], paddingBottomRight:[60,60], maxZoom:16} : {paddingTopLeft:[40,170], paddingBottomRight:[40, dockH()+20], maxZoom:16});
     $('body').scrollTop = 0; }
 }
 
-function refresh(){ paintMap(); paintStatus(); paintBody(); paintDays(); paintScrub(); }
+function refresh(){ paintMap(); paintStatus(); paintHead(); paintBody(); paintDays(); paintScrub(); }
 
 // ---------------- search
 const GEO = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer', EXT = `${FL.w},${FL.s},${FL.e},${FL.n}`;
@@ -628,6 +644,10 @@ $('q').addEventListener('input', e => {
     } catch(e){ $('sugg').hidden = true; } }, 220);
 });
 $('searchForm').addEventListener('submit', e => { e.preventDefault(); const q = $('q').value.trim(); if (q) go(q); });
+function openSearch(open){ $('searchForm').hidden = !open; $('searchBtn').setAttribute('aria-expanded', open); if (open){ $('layersPanel').hidden = true; setTimeout(() => $('q').focus(), 30); } else { $('q').value = ''; $('sugg').hidden = true; } }
+$('searchBtn').onclick = () => openSearch($('searchForm').hidden);
+$('closeSearch').onclick = () => openSearch(false);
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('searchForm').hidden) openSearch(false); });
 async function go(text, magicKey){
   $('sugg').hidden = true; $('q').blur();
   try {
@@ -636,7 +656,7 @@ async function go(text, magicKey){
     if (!loc){ const j = await getJSON(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&limit=1&countrycodes=us&viewbox=${FL.w},${FL.n},${FL.e},${FL.s}&bounded=1`); if (j[0]) { loc = [+j[0].lat, +j[0].lon]; label = j[0].display_name.split(',').slice(0,2).join(','); } }
     if (!loc) return toast('No match in Florida. Try a city or landmark name.');
     if (loc[0] < FL.s-.3 || loc[0] > FL.n+.3 || loc[1] < FL.w-.5 || loc[1] > FL.e+.6) return toast('That place is outside Florida. Spotcast covers Florida waters.');
-    $('q').value = ''; placeName = label; selectZone(null); map.setView(loc, 13);
+    openSearch(false); placeName = label; selectZone(null); map.setView(loc, 13);
   } catch(e){ toast('Search is unavailable right now. Check your connection and try again.'); }
 }
 map.on('dragstart', () => { placeName = null; });
@@ -647,6 +667,14 @@ function locate(){
     placeName = 'My location'; selectZone(null); map.setView([la, ln], 13); }, () => toast('Location permission was denied.'), {enableHighAccuracy:false, timeout:10000});
 }
 $('locate').onclick = locate;
+
+// ---------------- full-screen height (home-screen app fills the whole screen)
+function fitHeight(){
+  const sa = matchMedia('(display-mode: standalone)').matches || navigator.standalone, portrait = innerHeight >= innerWidth;
+  const h = sa && portrait ? Math.max(innerHeight, screen.height) : innerHeight;
+  document.documentElement.style.setProperty('--app-h', h + 'px'); map.invalidateSize();
+}
+addEventListener('resize', fitHeight); addEventListener('orientationchange', () => setTimeout(fitHeight, 300)); fitHeight();
 
 // ---------------- boot
 (async function boot(){

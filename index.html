@@ -32,7 +32,7 @@ html,body{height:100%;margin:0}
 body{background:var(--sea);color:var(--fg);font-family:var(--body);font-size:15px;overflow:hidden;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit}
-#app{position:fixed;inset:0}
+#app{position:fixed;left:0;right:0;top:0;height:var(--app-h,100%)}
 #map{position:absolute;inset:0;background:var(--sea)}
 .leaflet-container{font-family:var(--body);background:var(--sea)}
 .leaflet-control-attribution{background:rgba(8,22,26,.7)!important;color:var(--muted)!important;font-size:10px}
@@ -44,9 +44,10 @@ button{font:inherit;color:inherit}
 .top{position:absolute;z-index:800;top:calc(10px + env(safe-area-inset-top,0px));left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));display:flex;gap:8px;align-items:flex-start;pointer-events:none}
 .top-main{flex:1;min-width:0;display:grid;gap:6px;pointer-events:none}
 .glass{pointer-events:auto;background:rgba(15,32,37,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:var(--r)}
-.search{position:relative;z-index:3;display:flex;align-items:center;height:46px;padding:0 6px 0 12px;gap:8px}
+.search{position:absolute;z-index:900;top:calc(10px + env(safe-area-inset-top,0px));left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));display:flex;box-shadow:0 10px 30px rgba(0,0,0,.4);align-items:center;height:46px;padding:0 6px 0 12px;gap:8px}
 .search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--fg);font:500 16px var(--body)}
 .search input::placeholder{color:var(--muted)}
+.search input::-webkit-search-cancel-button{display:none;-webkit-appearance:none}
 .icon-btn{all:unset;cursor:pointer;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--fg)}
 .icon-btn:hover{background:var(--panel-2)}
 .sugg{position:absolute;left:-1px;right:-1px;top:calc(100% + 6px);list-style:none;margin:0;padding:6px;background:rgba(15,32,37,.98);border:1px solid var(--line);border-radius:var(--r);max-height:50vh;overflow:auto}
@@ -79,7 +80,18 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 /* dock */
 .dock{position:absolute;z-index:700;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);border-radius:20px 20px 0 0;display:flex;flex-direction:column;max-height:46%;box-shadow:0 -10px 30px rgba(0,0,0,.35)}
 .dock.detail{max-height:64%}
-.grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:8px auto 0;flex:none}
+.grab{display:block;width:38px;height:4px;border-radius:2px;background:var(--line);margin:0 auto;flex:none}
+.dock-head{all:unset;box-sizing:border-box;display:grid;gap:8px;width:100%;cursor:pointer;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));flex:none}
+.dock-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:20px}
+.dh-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.dh-text{display:flex;align-items:center;gap:8px;min-width:0;font-size:14px;color:var(--muted)}
+.dh-text b{color:var(--fg);font-weight:600}
+.dh-text .nm1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--fg)}
+.dh-text .pill{font-size:11.5px;padding:2px 8px}
+.chev{flex:none;color:var(--muted);transition:transform .2s}
+.dock.collapsed .chev{transform:rotate(0deg)} .dock:not(.collapsed) .chev{transform:rotate(180deg)}
+.dock.collapsed .dock-body{display:none}
+.dock.collapsed .timebar{border-top:1px solid var(--line)}
 .dock-body{overflow-y:auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));min-height:0;-webkit-overflow-scrolling:touch}
 .timebar{flex:none;border-top:1px solid var(--line);padding:8px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 .eyebrow{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
@@ -141,7 +153,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .zlabel{background:rgba(8,22,26,.82)!important;border:0!important;box-shadow:none!important;color:var(--fg)!important;font-family:var(--display);font-weight:600;font-size:12px;padding:2px 7px!important;border-radius:6px!important;white-space:nowrap}
 .zlabel::before{display:none}
 .lowzoom .zlabel{display:none}
-.loadbar{position:absolute;z-index:790;left:50%;transform:translateX(-50%);top:calc(150px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:8px;background:rgba(15,32,37,.92);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;color:var(--muted);pointer-events:none}
+.loadbar{position:absolute;z-index:790;left:50%;transform:translateX(-50%);top:calc(110px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:8px;background:rgba(15,32,37,.92);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;color:var(--muted);pointer-events:none}
 .loadbar span{width:12px;height:12px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (min-width:900px){.loadbar{left:calc(50% + 200px);top:170px}}
@@ -150,8 +162,10 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
   .dock{left:16px;top:16px;bottom:16px;right:auto;width:380px;max-height:none;border-radius:18px;border:1px solid var(--line)}
   .dock.detail{max-height:none}
   .grab{display:none}
+  .dock.collapsed{bottom:auto}
   .top{left:412px;right:16px;top:16px}
   .top-main{max-width:460px}
+  .search{left:auto;right:70px;top:16px;width:min(440px,calc(100% - 500px))}
   .here{left:calc(50% + 200px);top:170px}
   .layers{top:16px}
 }
@@ -163,12 +177,6 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
   <div id="map" aria-label="Map"></div>
   <div class="top">
     <div class="top-main">
-      <form class="search glass" id="searchForm" role="search" autocomplete="off">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color:var(--muted);flex:none"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
-        <input id="q" type="search" placeholder="Search a Florida city or spot" aria-label="Search a Florida city or spot" enterkeyhint="search">
-        <button class="icon-btn" type="button" id="locate" aria-label="Use my location"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
-        <ul class="sugg" id="sugg" hidden></ul>
-      </form>
       <div class="status glass" aria-live="polite">
         <div class="where" id="where">—</div>
         <div class="when" id="when">Loading…</div>
@@ -176,11 +184,19 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
       </div>
     </div>
     <div class="btns">
+      <button class="ctl" id="searchBtn" type="button" aria-label="Search a place" aria-expanded="false" aria-controls="searchForm"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
       <button class="ctl" id="layersBtn" type="button" aria-label="Map layers" aria-expanded="false" aria-controls="layersPanel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></button>
       <button class="ctl" id="zin" type="button" aria-label="Zoom in"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
       <button class="ctl" id="zout" type="button" aria-label="Zoom out"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+      <button class="ctl" id="locate" type="button" aria-label="Go to my location"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
     </div>
   </div>
+  <form class="search glass" id="searchForm" role="search" autocomplete="off" hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color:var(--muted);flex:none"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    <input id="q" type="search" placeholder="Search a Florida city or spot" aria-label="Search a Florida city or spot" enterkeyhint="search">
+    <button class="icon-btn" type="button" id="closeSearch" aria-label="Close search"><svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <ul class="sugg" id="sugg" hidden></ul>
+  </form>
   <div class="loadbar" id="loadBar" hidden><span></span>Loading spots…</div>
   <div class="layers glass" id="layersPanel" hidden>
     <span class="eyebrow">Map</span>
@@ -194,8 +210,11 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
     <div class="depth-key" id="depthKey" hidden><div class="grad"></div><div class="ticks"><span>0</span><span>6</span><span>15</span><span>22</span><span>35</span><span>50</span><span>70+ ft</span></div></div>
     <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
   </div>
-  <section class="dock" aria-label="Fishing spots">
-    <div class="grab" aria-hidden="true"></div>
+  <section class="dock collapsed" id="dock" aria-label="Fishing spots">
+    <button class="dock-head" id="dockHead" type="button" aria-expanded="false" aria-controls="body">
+      <span class="grab" aria-hidden="true"></span>
+      <span class="dh-row"><span class="dh-text" id="dockSummary">Loading…</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></span>
+    </button>
     <div class="dock-body" id="body"></div>
     <div class="timebar">
       <div class="now-row"><span class="eyebrow" id="tlabel">Strike timeline</span><button type="button" id="bestBtn">Best time</button></div>
