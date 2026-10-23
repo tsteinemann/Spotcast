@@ -735,7 +735,12 @@ function paintScrub(){
   el.addEventListener('pointerup', () => drag = false); el.addEventListener('pointercancel', () => drag = false);
   el.addEventListener('keydown', e => { if (e.key==='ArrowRight'){ setTime(Math.min(H-1,cur+1)); e.preventDefault(); } if (e.key==='ArrowLeft'){ setTime(Math.max(0,cur-1)); e.preventDefault(); } });
 })();
-$('bestBtn').onclick = () => { if (!COND) return; const vis = sel!=null ? [ZONES[sel]] : visibleZones(); if (vis.length) setTime(bestOfDay(HRS[cur].d, vis).i); };
+// one button: "Best time" jumps to the best hour; once you're off the current hour it becomes "Current time" to jump back
+const nowIdx = () => clamp(Math.ceil((Date.now()-T0)/3600e3), 0, H-1);
+function paintBest(){ const b = $('bestBtn'), atNow = !COND || cur === nowIdx(); b.textContent = atNow ? 'Best time' : 'Current time'; b.setAttribute('aria-label', atNow ? 'Jump to the best time today' : 'Back to the current time'); }
+$('bestBtn').onclick = () => { if (!COND) return;
+  if (cur !== nowIdx()){ setTime(nowIdx()); return; }
+  const vis = sel!=null ? [ZONES[sel]] : visibleZones(); if (vis.length) setTime(bestOfDay(HRS[cur].d, vis).i); };
 function setTime(i){ cur = clamp(i,0,H-1); refresh(); }
 function dockH(){ return document.querySelector('.dock').offsetHeight || Math.round(innerHeight*.46); }
 function selectZone(k){
@@ -745,7 +750,7 @@ function selectZone(k){
     $('body').scrollTop = 0; }
 }
 
-function refresh(){ paintMap(); paintStatus(); paintHead(); paintBody(); paintDays(); paintScrub(); }
+function refresh(){ paintMap(); paintStatus(); paintHead(); paintBody(); paintDays(); paintScrub(); paintBest(); }
 
 // ---------------- search
 const GEO = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer', EXT = `${FL.w},${FL.s},${FL.e},${FL.n}`;
