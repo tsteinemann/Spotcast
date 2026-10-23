@@ -116,7 +116,29 @@ map.attributionControl.setPrefix(false);
 map.createPane('habitat').style.zIndex = 410;
 map.createPane('zones').style.zIndex = 450;
 map.createPane('labels').style.zIndex = 430; map.getPane('labels').style.pointerEvents = 'none';
-const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxNativeZoom:18, maxZoom:19, attribution:'Imagery © Esri, Maxar, Earthstar Geographics'});
+// Satellite = Esri World Imagery everywhere, with newer free imagery laid on top where it exists (newest last = on top):
+// NOAA post-storm aerials (Debby, Helene, Milton 2024; Isaias Oct 2026) and Sarasota's Dec 2025–Jan 2026 city aerials.
+const NEWER = [ // [tileset, west, south, east, north, max native zoom]
+  ['20240807a',-83.2876,28.7999,-82.5374,29.4751,20],['20240808a',-83.7251,29.3624,-82.5499,30.4251,20],['20240812a',-82.6501,28.4999,-82.4999,28.9001,20],
+  ['20240927a',-85.7501,29.5749,-85.0124,30.1751,21],['20240927b',-85.2126,29.5624,-84.1624,30.2001,20],['20240928a',-83.7126,29.4499,-83.3374,29.9751,20],
+  ['20240928b',-83.4376,27.8874,-82.4374,29.7126,21],['20240929a',-83.1001,27.8999,-82.5749,29.2251,21],['20240929b',-82.7876,27.1999,-82.4749,27.8501,21],
+  ['20240930a',-82.5751,27.5874,-82.3249,27.9876,21],['20240930b',-82.8751,27.6874,-82.6874,28.2376,21],['20240930c',-82.6001,26.8999,-82.3124,27.3251,20],
+  ['20241001a',-82.8501,27.8249,-82.3374,28.1501,21],['20241001b',-82.8626,27.8499,-82.8124,27.9376,21],['20241002a',-82.7626,27.6874,-82.4624,28.0876,19],
+  ['20241002b',-82.7876,28.1999,-82.5874,28.5501,21],['20241002c',-83.4626,28.4999,-82.5124,29.7126,20],
+  ['20241011a',-82.8126,27.1499,-82.4124,27.6626,20],['20241011b',-82.5126,26.6499,-82.1499,27.2001,20],['20241011c',-82.7251,27.1499,-82.4499,27.4876,20],
+  ['20241011d',-82.8876,27.6249,-82.6124,28.2626,20],['20241012a',-82.3001,26.0624,-81.7124,26.7876,19],['20241012b',-82.1001,26.3374,-81.8124,26.9251,21],
+  ['20241012c',-82.8001,27.6749,-82.5499,28.0876,20],['20241013a',-82.2876,26.4624,-81.7874,27.0501,20],['20241013b',-82.3501,26.8499,-82.1249,27.1126,20],
+  ['20241013c',-81.3001,29.2249,-81.0124,29.6876,20],['20241013d',-81.1251,28.5249,-80.5374,29.3001,20],['20241014a',-82.9126,27.4874,-82.3499,28.1126,19],
+  ['20241014b',-82.4001,27.8374,-80.4999,28.6126,19],
+  ['20261010a',-85.3626,29.6374,-85.2624,29.8501,20],['20261011a',-88.0626,29.9749,-85.4749,30.4876,19],['20261011b',-87.3876,30.3249,-86.7999,30.6001,19],
+  ['20261012a',-89.2001,30.1124,-86.8624,30.8126,19],['20261013a',-85.5751,29.6249,-85.2249,30.0501,19]];
+const ArcExport = L.TileLayer.extend({ getTileUrl(c){ const sz = 2*MERC/2**c.z, x0 = -MERC + c.x*sz, y1 = MERC - c.y*sz;
+  return `${this._url}?bbox=${x0},${y1-sz},${x0+sz},${y1}&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&f=image`; } });
+const sat = L.layerGroup([
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxNativeZoom:18, maxZoom:19, zIndex:1, attribution:'Imagery © Esri, Maxar'}),
+  ...NEWER.map(([id,w,s,e,n,mz], i) => L.tileLayer(`https://stormscdn.ngs.noaa.gov/${id}-rgb/{z}/{x}/{y}`, {bounds:[[s,w],[n,e]], minZoom:11, maxNativeZoom:mz, maxZoom:19, zIndex:2+i, attribution: i===0 ? 'NOAA NGS, City of Sarasota' : ''})),
+  new ArcExport('https://srqgis.sarasotafl.gov/server/rest/services/City_Aerials_2026/MapServer/export', {bounds:[[27.27,-82.60],[27.40,-82.46]], minZoom:12, maxZoom:19, zIndex:2+NEWER.length})
+]);
 const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {pane:'labels', maxNativeZoom:18, maxZoom:19});
 const zoneRenderer = L.canvas({pane:'zones', padding:.4, tolerance:6});
 const zoneLayer = L.layerGroup().addTo(map);
