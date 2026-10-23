@@ -100,6 +100,12 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .pl-ramp{background:#1d6e8c;color:#fff;border:2px solid #fff}
 .pl-ic.sw-ic{width:18px;height:18px;border-width:1.5px;box-shadow:none}
 .pop-open .loadbar{display:none!important}
+.place{position:absolute;z-index:820;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--dock-h,120px) + 12px);max-height:calc(100% - var(--dock-h,120px) - 180px);overflow:auto;padding:14px 16px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:rise .25s cubic-bezier(.2,.8,.2,1) both}
+.place .place-x{position:absolute;top:10px;right:10px}
+.place .pc-t{padding-right:40px}
+.pop-open .rail{opacity:0;pointer-events:none}
+.pl-ic.pl-on{transform-origin:center;outline:3px solid var(--accent);outline-offset:2px}
+@media (min-width:900px){.place{left:auto;right:16px;bottom:24px;width:340px;max-height:calc(100% - 200px)}}
 .pc{display:grid;gap:6px;font-size:13.5px}
 .pc-t{font-family:var(--display);font-weight:700;font-size:17px;line-height:1.15}
 .pc-s{color:var(--muted);font-size:12.5px}
@@ -242,6 +248,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
       <button class="ctl" id="zout" type="button" aria-label="Zoom out"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
     </div>
   </div>
+  <div class="place glass" id="placeCard" hidden role="dialog" aria-label="Place details"><button class="close place-x" id="placeClose" type="button" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div id="placeBody"></div></div>
   <div class="loadbar" id="loadBar" hidden><span></span>Loading spots…</div>
   <div class="layers glass" id="layersPanel" hidden>
     <span class="eyebrow">Spots on the map</span>

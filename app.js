@@ -250,8 +250,6 @@ const ICONS = {
 };
 const placeIcon = k => L.divIcon({className:'pl-ic pl-'+k, iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-14],
   html:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`});
-// popups pan clear of the header card and the dock
-const POP = () => ({maxWidth:290, minWidth:240, autoPanPaddingTopLeft:L.point(16, ($('app').querySelector('.top')?.offsetHeight||140)+30), autoPanPaddingBottomRight:L.point(70, (document.querySelector('.dock')?.offsetHeight||160)+16)});
 const prow = (label, val) => val ? `<div class="pc-row"><span>${label}</span><b>${val}</b></div>` : '';
 const pcard = (title, sub, rows, foot) => `<div class="pc"><div class="pc-t">${esc(title)}</div>${sub?`<div class="pc-s">${sub}</div>`:''}<div class="pc-rows">${rows}</div>${foot||''}</div>`;
 const dirLink = (la,ln) => `<a class="pc-btn" href="https://maps.apple.com/?daddr=${la},${ln}" target="_blank" rel="noopener">Directions</a>`;
@@ -300,8 +298,8 @@ function loadFuel(){ FUEL.load(async () => {
   const j = await getJSON('https://gis.myfwc.com/hosting/rest/services/Open_Data/Marinas_Florida/MapServer/6/query?where='+encodeURIComponent(where)+'&outFields=Name,Street,City,Phone,Gas,Diesel,Wat_Name&outSR=4326&f=geojson');
   const icon = placeIcon('fuel');
   return (j.features||[]).map(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates;
-    const m = L.marker([la,ln], {pane:'places', icon, title:p.Name||'Public fuel dock', keyboard:false}).bindPopup(fuelCard(p, la, ln, null), POP());
-    m.on('popupopen', async () => { const x = await osmExtras(la, ln); m.setPopupContent(fuelCard(p, la, ln, x)); });
+    const m = L.marker([la,ln], {pane:'places', icon, title:p.Name||'Public fuel dock', keyboard:false});
+    placeTap(m, async tok => { showPlace(fuelCard(p, la, ln, null), m, tok); const x = await osmExtras(la, ln); showPlace(fuelCard(p, la, ln, x), m, tok, true); });
     return m; });
 }); }
 function rampCard(p, la, ln){
@@ -323,10 +321,30 @@ function loadRamps(){ RAMPS.load(async () => {
   const pages = await Promise.all([0,1000].map(off => getJSON(base+'&resultOffset='+off+'&resultRecordCount=1000')));
   const icon = placeIcon('ramp');
   return pages.flatMap(j => j.features||[]).map(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates;
-    return L.marker([la,ln], {pane:'places', icon, title:tc(p.RAMPNAME)||'Boat ramp', keyboard:false}).bindPopup(rampCard(p, la, ln), POP()); });
+    const m = L.marker([la,ln], {pane:'places', icon, title:tc(p.RAMPNAME)||'Boat ramp', keyboard:false});
+    placeTap(m, tok => showPlace(rampCard(p, la, ln), m, tok)); return m; });
 }); }
 OV.fuel = FUEL.layer; OV.ramps = RAMPS.layer;
-map.on('popupopen', () => $('app').classList.add('pop-open')); map.on('popupclose', () => $('app').classList.remove('pop-open'));
+// tapping a fuel dock or ramp opens a card above the dock (more reliable on iPhone than map popups)
+let placeTok = 0, placeOn = null;
+function placeTap(m, open){ let last = 0;
+  const go = e => { const now = Date.now(); if (now - last < 450) return; last = now; if (e && e.originalEvent) L.DomEvent.stop(e.originalEvent); open(++placeTok); };
+  m.on('click', go);
+  m.on('add', () => { const el = m.getElement(); if (el && !el.__tap){ el.__tap = 1; let sx = 0, sy = 0, moved = false;
+      el.addEventListener('touchstart', ev => { const t = ev.touches[0]; sx = t.clientX; sy = t.clientY; moved = false; }, {passive:true});
+      el.addEventListener('touchmove', ev => { const t = ev.touches[0]; if (Math.hypot(t.clientX-sx, t.clientY-sy) > 10) moved = true; }, {passive:true});
+      el.addEventListener('touchend', ev => { if (moved) return; ev.preventDefault(); ev.stopPropagation(); go(); }, {passive:false}); } });
+}
+function showPlace(html, m, tok, update){
+  if (update && tok !== placeTok) return; // a newer card was opened meanwhile
+  const el = $('placeCard'); $('placeBody').innerHTML = html; el.hidden = false; $('app').classList.add('pop-open');
+  if (placeOn && placeOn !== m && placeOn.getElement()) placeOn.getElement().classList.remove('pl-on');
+  placeOn = m; if (m.getElement()) m.getElement().classList.add('pl-on');
+  if (!update){ const pt = map.latLngToContainerPoint(m.getLatLng()), top = (document.querySelector('.top')?.offsetHeight||140)+30, bottom = map.getSize().y - (document.querySelector('.dock')?.offsetHeight||160) - el.offsetHeight - 24;
+    if (pt.y < top || pt.y > bottom) map.panBy([0, pt.y - (top + Math.max(0,bottom-top)/2)], {animate:true}); }
+}
+function closePlace(){ $('placeCard').hidden = true; $('app').classList.remove('pop-open'); if (placeOn && placeOn.getElement()) placeOn.getElement().classList.remove('pl-on'); placeOn = null; placeTok++; }
+$('placeClose').onclick = closePlace;
 function applyLayers(){
   [sat, relief].forEach(b => map.hasLayer(b) && map.removeLayer(b));
   (LS.base==='relief' ? relief : sat).addTo(map);
@@ -655,7 +673,7 @@ function onMove(){
   }, 300);
 }
 map.on('moveend', onMove);
-map.on('click', () => { $('layersPanel').hidden = true; if (!$('searchForm').hidden) openSearch(false); });
+map.on('click', () => { closePlace(); $('layersPanel').hidden = true; if (!$('searchForm').hidden) openSearch(false); });
 function setLoading(){ $('loadBar').hidden = cellsBusy.size === 0; }
 let refreshT = null; const refreshSoon = () => { clearTimeout(refreshT); refreshT = setTimeout(refresh, 250); };
 
