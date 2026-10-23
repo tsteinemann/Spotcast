@@ -662,7 +662,11 @@ function paintSpot(){
     <div id="planOut">${plans[key]?planHtml(plans[key]):''}</div>`;
   $('closeSpot').onclick = () => selectZone(null);
   const gb = $('goBest'); if (gb) gb.onclick = () => setTime(b.i);
-  $('planBtn').onclick = () => { plans[key] = gamePlan(z, s, cur); $('planOut').innerHTML = planHtml(plans[key]); wireCopy(); };
+  $('planBtn').onclick = () => { plans[key] = gamePlan(z, s, cur); const out = $('planOut'); out.innerHTML = planHtml(plans[key]); wireCopy();
+    // reveal: the plan rises in and the panel scrolls so its top sits just under the button
+    const body = $('body'), top = body.scrollTop + out.getBoundingClientRect().top - body.getBoundingClientRect().top - 64;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => body.scrollTo({top: Math.max(0, top), behavior: reduce ? 'auto' : 'smooth'})); };
   wireCopy();
 }
 function shortWhy(s){ const up = s.why.filter(w=>w[0]>0)[0], dn = s.why.filter(w=>w[0]<0)[0]; return ((up||dn||[0,''])[1]).split('. ')[0]; }

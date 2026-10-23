@@ -146,7 +146,8 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:13px}
 .plan-btn{all:unset;box-sizing:border-box;cursor:pointer;width:100%;text-align:center;margin-top:14px;padding:12px;border-radius:12px;background:var(--accent);color:#06211d;font-family:var(--display);font-weight:700;font-size:17px}
-.plan{margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--panel-2);font-size:14.5px;line-height:1.5}
+.plan{margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--panel-2);font-size:14.5px;line-height:1.5;border-left:3px solid var(--accent);animation:rise .38s cubic-bezier(.2,.8,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 .plan h4{margin:12px 0 4px;font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
 .plan h4:first-child{margin-top:0}
 .plan ul{margin:0;padding-left:18px} .plan p{margin:0 0 6px}
@@ -191,7 +192,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
   .dock-open .rail{opacity:1;pointer-events:auto}
   .layers{bottom:24px;right:72px}
 }
-@media (prefers-reduced-motion:reduce){.skel{animation:none}}
+@media (prefers-reduced-motion:reduce){.skel,.plan{animation:none}}
 </style>
 </head>
 <body>
