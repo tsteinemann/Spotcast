@@ -1,4 +1,4 @@
-const V = 'spotcast-v7';
+const V = 'spotcast-v8';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'stations.json', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
@@ -26,8 +26,10 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (u.origin === location.origin){
-    e.respondWith(fetch(r).then(res => { const cl = res.clone(); caches.open(V).then(c => c.put(r, cl)); return res; }).catch(() => caches.match(r).then(m => m || caches.match('index.html'))));
+    // network first; only good responses are cached, and a failed or bad response falls back to the last good copy
+    e.respondWith(fetch(r).then(async res => { if (res.ok){ const cl = res.clone(); caches.open(V).then(c => c.put(r, cl)); return res; } return (await caches.match(r)) || res; })
+      .catch(() => caches.match(r).then(m => m || caches.match('index.html'))));
     return;
   }
-  e.respondWith(caches.match(r).then(m => m || fetch(r).then(res => { const cl = res.clone(); caches.open(V).then(c => c.put(r, cl)); return res; })));
+  e.respondWith(caches.match(r).then(m => m || fetch(r).then(res => { if (res.ok){ const cl = res.clone(); caches.open(V).then(c => c.put(r, cl)); } return res; })));
 });

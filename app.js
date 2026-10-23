@@ -797,6 +797,7 @@ addEventListener('resize', fitHeight); addEventListener('orientationchange', () 
 
 // ---------------- boot
 (async function boot(){
+  window.__scBoot = true;
   try { STATIONS = await getJSON('stations.json'); } catch(e){}
   const v = store.get('sz3-view', null) || (store.get('sz2-place', null) ? Object.assign({z:13}, store.get('sz2-place')) : {lat:27.632, lng:-82.72, z:13, name:'Fort De Soto, FL'});
   placeName = v.name || null;

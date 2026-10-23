@@ -249,6 +249,12 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
   <div class="toast" id="toast" hidden></div>
 </div>
 
+<script>
+// if startup fails (e.g. a file arrived broken mid-update), offer a clean reload instead of a stuck "Loading…"
+window.__scBoot = false;
+setTimeout(function(){ if (window.__scBoot) return; var t = document.getElementById('when'); if (!t) return;
+  t.innerHTML = 'Couldn\u2019t start. <button type="button" style="all:unset;cursor:pointer;color:#62d8c7;font-size:15px" onclick="(navigator.serviceWorker?navigator.serviceWorker.getRegistrations():Promise.resolve([])).then(function(rs){return Promise.all(rs.map(function(r){return r.update()}))}).finally(function(){location.reload()})">Tap to reload</button>'; }, 12000);
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
 <script src="app.js"></script>
