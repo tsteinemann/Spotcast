@@ -1,10 +1,10 @@
-const V = 'spotcast-v9';
+const V = 'spotcast-v10';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'stations.json', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js'];
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(new Request(u, {mode: u.startsWith('http') ? 'cors' : 'same-origin'})).catch(() => {})))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(V).then(c => Promise.all(SHELL.map(u => c.add(new Request(u, {mode: u.startsWith('http') ? 'cors' : 'same-origin', cache: 'reload'})).catch(() => {})))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => ![V, 'spotcast-tiles', 'spotcast-data'].includes(k)).map(k => caches.delete(k)))).then(() => self.clients.claim()));
@@ -27,7 +27,8 @@ self.addEventListener('fetch', e => {
   }
   if (u.origin === location.origin){
     // network first; only good responses are cached, and a failed or bad response falls back to the last good copy
-    e.respondWith(fetch(r).then(async res => { if (res.ok){ const cl = res.clone(); caches.open(V).then(c => c.put(r, cl)); return res; } return (await caches.match(r)) || res; })
+    // bypass the browser's HTTP cache (GitHub Pages sends max-age=600) so updates show on the next open
+    e.respondWith(fetch(r, {cache: 'no-cache'}).then(async res => { if (res.ok){ const cl = res.clone(); caches.open(V).then(c => c.put(r, cl)); return res; } return (await caches.match(r)) || res; })
       .catch(() => caches.match(r).then(m => m || caches.match('index.html'))));
     return;
   }
