@@ -596,12 +596,17 @@ function tideH(id){
   return T.h;
 }
 let condSeq = 0;
+const WMO_TEXT = c => c >= 95 ? 'Thunderstorms' : c >= 80 ? 'Rain showers' : c >= 61 ? 'Rain' : c >= 51 ? 'Drizzle' : c >= 45 ? 'Fog' : c === 3 ? 'Cloudy' : c === 2 ? 'Partly cloudy' : c === 1 ? 'Mostly sunny' : 'Sunny';
 async function loadConditions(c){
   const seq = ++condSeq;
   const tzGuess = (c[1] < -85.0 && c[0] > 29.5) ? 'America/Chicago' : 'America/New_York';
   const base = {c, wx:null, waterTemp:null};
   let tz = tzGuess, periods = null;
   try { const pt = await getJSON(`https://api.weather.gov/points/${c[0].toFixed(4)},${c[1].toFixed(4)}`); tz = pt.properties.timeZone || tz; periods = (await getJSON(pt.properties.forecastHourly)).properties.periods; } catch(e){}
+  if (!periods || !periods.length){ // backup forecast: Open-Meteo (free, no key) in the same shape as the NWS hourly periods
+    try { const j = await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${c[0].toFixed(4)}&longitude=${c[1].toFixed(4)}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,precipitation_probability,weather_code,is_day&wind_speed_unit=mph&temperature_unit=fahrenheit&timezone=GMT&forecast_days=8`);
+      const h = j.hourly; periods = h.time.map((t,k) => ({startTime:t+':00Z', windSpeed:Math.round(h.wind_speed_10m[k])+' mph', windDirection:card(h.wind_direction_10m[k]), temperature:Math.round(h.temperature_2m[k]),
+        probabilityOfPrecipitation:{value:h.precipitation_probability[k]}, shortForecast:WMO_TEXT(h.weather_code[k])})); } catch(e){} }
   if (seq !== condSeq) return;
   TZ = tz; buildClock();
   // wind per hour
@@ -763,14 +768,13 @@ function paintBody(){
   if (!vis.length){ el.innerHTML = cellsBusy.size ? `<div class="eyebrow">Finding spots in view</div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:85%"></div>` : `<div class="empty"><b>No mapped spots in view</b>Pan to the coast or zoom out a little. Spots come from passes, bridges, drop-offs, flats, mangroves, oyster bars, docks and reefs.</div>${installHtml()}`; wireInstall(); return; }
   const ranked = vis.map(z => ({z, s:score(z.k,cur)})).sort((a,b) => b.s.total-a.s.total);
   const counts = {}; vis.forEach(z => counts[z.type] = (counts[z.type]||0)+1);
-  el.innerHTML = `<button type="button" class="trip-btn" id="tripBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Plan a trip, up to a week out</button><div class="list-head"><span class="eyebrow">${vis.length} spots in view · best at ${hourLabel(cur)}</span><span class="legend">${TIER.map(t=>`<span class="t-${t[1]}"><i class="dot"></i>${t[2]}</span>`).join('')}</span></div>
+  el.innerHTML = `<div class="list-head"><span class="eyebrow">${vis.length} spots in view · best at ${hourLabel(cur)}</span><span class="legend">${TIER.map(t=>`<span class="t-${t[1]}"><i class="dot"></i>${t[2]}</span>`).join('')}</span></div>
     <ol class="rank">${ranked.slice(0,30).map((r,n)=>`<li><button type="button" class="t-${r.s.tier[1]}" data-k="${r.z.k}"><span class="n">${n+1}</span><span class="nm">${esc(r.z.name)} <span class="kind">· ${r.z.label}</span><span class="why">${esc(shortWhy(r.s))}</span></span><span class="pill">${r.s.tier[2]}</span></button></li>`).join('')}</ol>
     ${ranked.length>30?`<p class="note">Showing the top 30. Zoom in to narrow the list.</p>`:''}
     <p class="note">${KIND_ORDER.filter(k=>counts[k]).map(k=>`${counts[k]} ${TYPES[k].label.toLowerCase()}`).join(' · ')}</p>
     ${installHtml()}
     <p class="note">Spots are generated from FWC habitat maps, FDOT bridges and the NOAA depth model, then rated each hour from NOAA tides, the NWS wind forecast, moon and sun. A starting point, not local knowledge. Not for navigation.</p>`;
   el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => selectZone(+b.dataset.k));
-  $('tripBtn').onclick = () => typeof openPlanner === 'function' && openPlanner();
   wireInstall();
 }
 function paintSpot(){
@@ -849,6 +853,32 @@ function paintDays(){
     return `<button type="button" class="day t-${t[1]}" data-d="${d}" aria-pressed="${d===curD}" aria-label="${dayLabel(d)}"><span class="dw">${D.wd}</span><span class="dn">${D.dn}</span><span class="bar"></span></button>`; }).join('');
   box.querySelectorAll('.day').forEach(b => b.onclick = () => setTime(hourAt(+b.dataset.d, HRS[cur].h)));
 }
+// simple weather under the timeline: one cell per 3 hours of the selected day (icon, temp, wind)
+const WX_ICONS = {
+  sun:'<circle cx="12" cy="12" r="4.2" fill="#ffd23d" stroke="none"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" stroke="#ffd23d"/>',
+  moon:'<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z" fill="#cfe3ea" stroke="none"/>',
+  partly:'<circle cx="9" cy="9" r="3.6" fill="#ffd23d" stroke="none"/><path d="M9 2.8v1.6M2.8 9h1.6M4.6 4.6l1.1 1.1M13.4 4.6l-1.1 1.1" stroke="#ffd23d"/><path d="M8 19h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.6 1.4A2.8 2.8 0 0 0 8 19z" fill="#cfd8dc" stroke="none"/>',
+  partlyN:'<path d="M14 9.5A4.5 4.5 0 0 1 8.5 4a4.5 4.5 0 1 0 5.5 5.5z" fill="#cfe3ea" stroke="none"/><path d="M8 19h9a3.5 3.5 0 0 0 0-7 5 5 0 0 0-9.6 1.4A2.8 2.8 0 0 0 8 19z" fill="#aab8bd" stroke="none"/>',
+  cloud:'<path d="M7 18h10a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.6A3.2 3.2 0 0 0 7 18z" fill="#aab8bd" stroke="none"/>',
+  rain:'<path d="M7 14h10a3.6 3.6 0 0 0 0-7.2 5 5 0 0 0-9.6 1.4A2.9 2.9 0 0 0 7 14z" fill="#aab8bd" stroke="none"/><path d="M8.5 16.5l-1 2.5M12.5 16.5l-1 2.5M16.5 16.5l-1 2.5" stroke="#7fd6ee"/>',
+  storm:'<path d="M7 13h10a3.6 3.6 0 0 0 0-7.2 5 5 0 0 0-9.6 1.4A2.9 2.9 0 0 0 7 13z" fill="#8a989d" stroke="none"/><path d="M12.5 13.5l-2.5 4h3l-2 4" stroke="#ffd23d" fill="none"/>',
+  fog:'<path d="M4 9h16M6 13h12M4 17h16" stroke="#aab8bd"/>'
+};
+function wxIcon(sf, pop, night){
+  const t = (sf||'').toLowerCase();
+  const k = /thunder|storm/.test(t) ? 'storm' : (/rain|shower|drizzle/.test(t) || pop >= 50) ? 'rain' : /fog|haze|mist/.test(t) ? 'fog'
+    : /mostly cloudy|cloudy|overcast/.test(t) && !/partly|mostly sunny|mostly clear/.test(t) ? 'cloud' : /partly|mostly sunny|mostly clear|few clouds/.test(t) ? (night ? 'partlyN' : 'partly') : (night ? 'moon' : 'sun');
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${WX_ICONS[k]}</svg>`;
+}
+function paintWx(){
+  const el = $('wxrow'); if (!el) return;
+  if (!COND || COND.noWind){ el.hidden = true; return; }
+  const d = HRS[cur].d, cells = [];
+  for (let h=1; h<24; h+=3){ const i = hourAt(d, h), w = COND.wx[i], on = Math.floor(HRS[cur].h/3) === Math.floor(h/3);
+    if (!w[5]){ cells.push(`<div class="wx${on?' on':''}"><span class="wx-na">—</span></div>`); continue; }
+    cells.push(`<div class="wx${on?' on':''}" title="${esc(w[4]||'')}${w[3]?` · ${w[3]}% rain`:''}">${wxIcon(w[4], w[3]||0, COND.hour[i].night)}<b>${w[2]!=null?w[2]+'°':''}</b><span>${card(w[1])} ${w[0]}</span></div>`); }
+  el.innerHTML = cells.join(''); el.hidden = false;
+}
 function paintScrub(){
   if (!COND) return; const d = HRS[cur].d, svg = $('scrubSvg'), vis = sel!=null ? [ZONES[sel]] : visibleZones(); let g = '';
   const m = map.getCenter(), stId = sel!=null ? ZONES[sel].st : nearestStation([m.lat,m.lng]), th = stId ? tideH(stId) : null;
@@ -885,7 +915,7 @@ function selectZone(k){
     $('body').scrollTop = 0; }
 }
 
-function refresh(){ paintMap(); paintStatus(); paintHead(); paintBody(); paintDays(); paintScrub(); paintBest(); }
+function refresh(){ paintMap(); paintStatus(); paintHead(); paintBody(); paintDays(); paintScrub(); paintWx(); paintBest(); }
 
 // ---------------- search
 const GEO = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer', EXT = `${FL.w},${FL.s},${FL.e},${FL.n}`;

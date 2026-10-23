@@ -261,6 +261,12 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .scrub-wrap{position:relative;touch-action:none;cursor:pointer;user-select:none;-webkit-user-select:none}
 .scrub-wrap svg{display:block;width:100%;height:44px}
 .scrub-labels{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:2px}
+.wxrow{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+.wx{display:grid;justify-items:center;gap:0;padding:3px 0;border-radius:8px;font-variant-numeric:tabular-nums}
+.wx b{font-family:var(--display);font-weight:700;font-size:14px;line-height:1.1}
+.wx span{color:var(--muted);font-size:10.5px;white-space:nowrap}
+.wx.on{background:var(--panel-2)}
+.wx-na{color:var(--muted)}
 .now-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px}
 .now-row .eyebrow b{color:var(--fg)}
 .now-row button{all:unset;cursor:pointer;color:var(--accent);font-size:13px;font-weight:600}
@@ -343,6 +349,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
       <div class="days" id="days" role="group" aria-label="Day"></div>
       <div class="scrub-wrap" id="scrub" role="slider" tabindex="0" aria-label="Hour" aria-valuemin="0" aria-valuemax="23"><svg id="scrubSvg" viewBox="0 0 240 64" preserveAspectRatio="none"></svg></div>
       <div class="scrub-labels"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>
+      <div class="wxrow" id="wxrow" hidden aria-label="Weather for the selected day, every 3 hours"></div>
     </div>
   </section>
   <div class="planner" id="planner" hidden role="dialog" aria-modal="true" aria-labelledby="planTitle">
