@@ -299,28 +299,58 @@ async function loadCell(key){
     push('reef', p.Name || 'Artificial reef', c, {poly:circle(c[0],c[1],120,12)}, {depth: p.Depth ? p.Depth+' ft' : 'Unknown', structure:`Man-made reef: ${p.MatDescrip || p.MatCat || 'structure'}${p.Relief?', '+p.Relief+' ft relief':''}`, gps:`${c[0].toFixed(5)}, ${c[1].toFixed(5)}`});
     OV.reefs.addLayer(L.circleMarker(c, {pane:'habitat', radius:p.MatCat==='Vessel'?6.5:5, color:'#08161a', weight:1.5, fillColor:p.MatCat==='Vessel'?'#ffd23d':'#ff8a3d', fillOpacity:1})
       .bindPopup(`<b>${esc(p.Name||'Artificial reef')}</b><br>${p.Depth?esc(p.Depth)+' ft deep · ':''}${esc(p.MatCat==='Vessel'?'Sunken vessel':p.MatCat||'Reef')}<br>${esc(p.MatDescrip||'')}${p.DeployDate?'<br>Placed '+esc(p.DeployDate):''}<br>${c[0].toFixed(5)}, ${c[1].toFixed(5)}`)); });
-  // oyster bars: merge beds within 250 m into bars
+  // ---- water checks from the depth model (z13 tiles for this cell are loaded above)
+  const depthFt = (la,ln) => { const v = demAt(la,ln); return v===null ? null : -(v+0.2)*3.28084; };
+  const offsetPt = (p, nx, ny, m) => [p[0] + ny*m/111320, p[1] + nx*m/(111320*Math.cos(p[0]*Math.PI/180))];
+  const sampleOf = (pts, n) => { const out = []; const step = Math.max(1, Math.floor(pts.length/n)); for (let i=0;i<pts.length;i+=step) out.push(pts[i]); return out; };
+  const landFrac = pts => { let land=0, known=0; for (const p of sampleOf(pts,16).concat([centroid(pts)])){ const v = demAt(p[0],p[1]); if (v===null) continue; known++; if (v > 0.3) land++; } return known ? land/known : 0; };
+  const accessNear = (c, rM, minFt) => { for (const f of [0.5,1]) for (let k=0;k<8;k++){ const ang = k*Math.PI/4, d = depthFt(...offsetPt(c, Math.cos(ang), Math.sin(ang), rM*f)); if (d !== null && d >= minFt) return true; } return false; };
+  // oyster bars: merge beds within 250 m; keep bars in the water with a way in
   const op = oys.flatMap(f => ringsOf(f.geometry)).map(p => ({pts:p[0], c:centroid(p[0])}));
   OV.oyster.addLayer(L.layerGroup(op.map(p => L.polygon(p.pts, {pane:'habitat', color:'#ffd58a', weight:1, fillColor:'#e8b45a', fillOpacity:.75, interactive:false}))));
   const used = new Uint8Array(op.length);
   op.forEach((p,i) => { if (used[i]) return; const grp=[p]; used[i]=1; for (let j=i+1;j<op.length;j++) if (!used[j] && distKm(p.c, op[j].c) < 0.25){ used[j]=1; grp.push(op[j]); }
     const pts = grp.flatMap(g=>g.pts), c = centroid(grp.map(g=>g.c)); let poly = hull(pts); if (poly.length < 3 || lineLenKm(poly) < 0.25) poly = circle(c[0],c[1],90,12);
-    grp.length >= 1 && push('oyster', 'Oyster bars near '+nearName(c), c, {poly}, {structure:`${grp.length} mapped oyster bar${grp.length>1?'s':''} with shell edges and drop-offs`}); });
-  // tidal flats
-  flats.flatMap(f => ringsOf(f.geometry)).map(r => simplify(r[0], 0.00008)).filter(pts => pts.length >= 4 && lineLenKm(pts) >= 0.3)
-    .sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,12).forEach(pts => { const c = centroid(pts); push('flat', 'Flat near '+nearName(c), c, {poly:pts}); });
-  // mangrove shorelines: edges as lines, long ones cut into 900 m runs
-  mangs.flatMap(f => ringsOf(f.geometry)).map(r => simplify(r[0], 0.00012)).filter(pts => pts.length >= 4 && lineLenKm(pts) >= 0.35)
-    .flatMap(pts => splitLine(pts, 0.9).slice(0,3)).sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,12)
-    .forEach(seg => { const c = seg[Math.floor(seg.length/2)]; push('mangrove', 'Mangrove shoreline near '+nearName(c), c, {line:seg}); });
+    if (landFrac(poly) > 0.5 || !accessNear(c, 300, 3)) return;
+    push('oyster', 'Oyster bars near '+nearName(c), c, {poly}, {structure:`${grp.length} mapped oyster bar${grp.length>1?'s':''} with shell edges and drop-offs`}); });
+  // tidal flats: only flats that sit in the water (not on marsh or land) and border water deep enough to reach
+  flats.flatMap(f => ringsOf(f.geometry)).map(r => simplify(r[0], 0.00008))
+    .filter(pts => pts.length >= 4 && lineLenKm(pts) >= 0.3 && landFrac(pts) <= 0.3 && accessNear(centroid(pts), 250, 4))
+    .sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,8).forEach(pts => { const c = centroid(pts); push('flat', 'Flat near '+nearName(c), c, {poly:pts}); });
+  // mangrove shorelines: only the edges that face fishable water (2+ ft within 60 m, 3.5+ ft within 130 m)
+  const runs = [];
+  mangs.flatMap(f => ringsOf(f.geometry)).map(r => simplify(r[0], 0.00008)).filter(pts => pts.length >= 4 && lineLenKm(pts) >= 0.35).forEach(pts => {
+    let run = null;
+    for (let i=0;i<pts.length-1;i++){
+      const A = pts[i], B = pts[i+1], m = [(A[0]+B[0])/2, (A[1]+B[1])/2];
+      const dx = (B[1]-A[1])*Math.cos(m[0]*Math.PI/180), dy = B[0]-A[0], len = Math.hypot(dx,dy) || 1, nx = -dy/len, ny = dx/len;
+      let ok = false;
+      for (const sgn of [1,-1]){ const d1 = depthFt(...offsetPt(m, nx*sgn, ny*sgn, 60)), d2 = depthFt(...offsetPt(m, nx*sgn, ny*sgn, 130));
+        if (d1 !== null && d1 >= 2 && Math.max(d1, d2 ?? 0) >= 3.5){ ok = true; break; } }
+      if (ok){ if (!run){ run = [A]; } run.push(B); } else if (run){ runs.push(run); run = null; }
+    }
+    if (run) runs.push(run);
+  });
+  runs.filter(r => lineLenKm(r) >= 0.4).flatMap(r => splitLine(r, 0.9)).filter(r => lineLenKm(r) >= 0.3)
+    .sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,6)
+    .forEach(seg => { const c = seg[Math.floor(seg.length/2)]; push('mangrove', 'Mangrove shoreline near '+nearName(c), c, {line:seg}, {structure:'Mangrove edge on fishable water; high tide pushes fish up under the roots'}); });
   // docks and marinas
   marinas.filter(f => { const p=f.properties||{}, nm=p.Name||'', us=p.Usage||'';
       return !/condo|villa|apartment|association|\bhoa\b|tower|residen|club|yacht sales|kayak|boats?$|rental/i.test(nm) && (/public/i.test(us) || /park|pier|ramp|marina|fish/i.test(nm)); })
-    .slice(0,5).forEach(f => { const p=f.properties, c=[f.geometry.coordinates[1], f.geometry.coordinates[0]];
-    push('dock', p.Name ? p.Name.replace(/\s*-\s*Marina$/,'') : 'Docks', c, {poly:circle(c[0],c[1],110,12)}, {structure:`Docks and seawalls${p.Wat_Name?' on '+p.Wat_Name:''}; shade by day, lights at night`}); });
-  // bridges over water (FDOT and local)
-  br1.concat(br2).flatMap(f => linesOf(f.geometry)).forEach(l => { if (lineLenKm(l) < 0.04) return; const c = l[Math.floor(l.length/2)], e = demAt(c[0], c[1]);
-    if (e === null || e > -0.4) return; push('bridge', 'Bridge near '+nearName(c), c, {line:l}, {depth: `${Math.round(-(e+0.2)*3.28084)} ft under the span (approx.)`}); });
+    .map(f => ({p:f.properties, c:[f.geometry.coordinates[1], f.geometry.coordinates[0]]}))
+    .map(o => { // snap the marker to the nearest water within 120 m (marina points often sit on the building)
+      if (demAt(o.c[0],o.c[1]) !== null && demAt(o.c[0],o.c[1]) < -0.3) return o;
+      for (const r of [40,80,120]) for (let k=0;k<12;k++){ const ang=k*Math.PI/6, q=[o.c[0]+Math.sin(ang)*r/111320, o.c[1]+Math.cos(ang)*r/(111320*Math.cos(o.c[0]*Math.PI/180))], v=demAt(q[0],q[1]); if (v!==null && v < -0.3) return {p:o.p, c:q}; }
+      return null; }).filter(Boolean)
+    .slice(0,5).forEach(({p,c}) => {
+    push('dock', p.Name ? p.Name.replace(/\s*-\s*Marina$/,'') : 'Docks', c, {poly:circle(c[0],c[1],60,12)}, {structure:`Docks and seawalls${p.Wat_Name?' on '+p.Wat_Name:''}; shade by day, lights at night`}); });
+  // bridges: keep only the part of each span that crosses water 2+ ft deep
+  br1.concat(br2).flatMap(f => linesOf(f.geometry)).forEach(l => {
+    const dense = []; for (let i=0;i<l.length-1;i++){ const n = Math.max(1, Math.ceil(distKm(l[i],l[i+1])/0.025)); for (let k=0;k<n;k++) dense.push([l[i][0]+(l[i+1][0]-l[i][0])*k/n, l[i][1]+(l[i+1][1]-l[i][1])*k/n]); } dense.push(l[l.length-1]);
+    let run = [], best = []; const flush = () => { if (lineLenKm(run) > lineLenKm(best)) best = run; run = []; };
+    for (const p of dense){ const v = demAt(p[0],p[1]); if (v !== null && -(v+0.2)*3.28084 >= 2) run.push(p); else flush(); } flush();
+    if (best.length < 2 || lineLenKm(best) < 0.04) return; const c = best[Math.floor(best.length/2)], e = demAt(c[0],c[1]);
+    push('bridge', 'Bridge near '+nearName(c), c, {line:best}, {depth: `${Math.round(-(e+0.2)*3.28084)} ft under the span (approx.)`}); });
   // drop-offs from the depth model: the 6 ft line where the bottom falls fast
   const segs = [];
   dem.filter(Boolean).forEach(({x,y,g:g0}) => {
