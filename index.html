@@ -47,7 +47,7 @@ button{font:inherit;color:inherit}
 .top{position:absolute;z-index:800;top:calc(10px + env(safe-area-inset-top,0px));left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));display:flex;gap:8px;align-items:flex-start;pointer-events:none}
 .status{flex:1;max-width:520px}
 .glass{pointer-events:auto;background:rgba(15,32,37,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:var(--r)}
-.search{display:flex;align-items:center;height:40px;margin:0 0 4px -4px;padding:0 4px 0 10px;gap:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:11px}
+.search{display:flex;align-items:center;height:44px;margin:0 0 4px -4px;padding:0 4px 0 10px;gap:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:11px}
 .search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--fg);font:500 16px var(--body)}
 .search input::placeholder{color:var(--muted)}
 .search input::-webkit-search-cancel-button{display:none;-webkit-appearance:none}
@@ -57,9 +57,10 @@ button{font:inherit;color:inherit}
 .sugg button{all:unset;box-sizing:border-box;display:block;width:100%;cursor:pointer;padding:10px;border-radius:9px;font-size:15px}
 .sugg button:hover,.sugg button:focus-visible{background:var(--panel-2)}
 .status{position:relative;z-index:1;padding:8px 10px 9px 12px;display:grid;gap:2px;min-width:0}
-.where-btn{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:8px;min-width:0;height:30px;margin:-2px 0 0 -4px;padding:0 10px 0 6px;border-radius:9px;max-width:100%;justify-self:start}
-.where-btn:hover,.where-btn:focus-visible{background:var(--panel-2)}
-.where-btn svg{flex:none;color:var(--accent)}
+.where-btn{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;min-width:0;height:40px;margin:-2px 0 2px -4px;padding:0 10px 0 2px;border-radius:12px;max-width:100%;justify-self:start}
+.sicon{flex:none;width:36px;height:36px;border-radius:10px;border:1.5px solid var(--accent);display:grid;place-items:center;color:var(--accent);background:rgba(98,216,199,.08)}
+.where-btn:hover .sicon,.where-btn:focus-visible .sicon{background:rgba(98,216,199,.18)}
+.status .where-btn .where{font-size:17px;letter-spacing:.06em}
 .where-btn .where{min-width:0}
 .where-btn .hint{flex:none;color:var(--muted);font-size:12px;font-weight:500}
 .when-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
@@ -198,7 +199,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
   <div id="map" aria-label="Map"></div>
   <div class="top">
     <div class="status glass">
-      <button class="where-btn" id="searchBtn" type="button" aria-label="Search a place" aria-expanded="false" aria-controls="searchForm"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span class="where" id="where">—</span></button>
+      <button class="where-btn" id="searchBtn" type="button" aria-label="Search a place" aria-expanded="false" aria-controls="searchForm"><span class="sicon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></span><span class="where" id="where">—</span></button>
       <form class="search" id="searchForm" role="search" autocomplete="off" hidden>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" style="color:var(--accent);flex:none"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
         <input id="q" type="search" placeholder="Search a Florida city or spot" aria-label="Search a Florida city or spot" enterkeyhint="search">
