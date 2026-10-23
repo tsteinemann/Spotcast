@@ -279,8 +279,8 @@ async function loadCell(key){
   const [iy, ix] = key.split(':').map(Number), s = iy*CELL, w = ix*CELL, bb = [w, s, w+CELL, s+CELL];
   const inBox = c => c[0]>=s && c[0]<s+CELL && c[1]>=w && c[1]<w+CELL;
   const simp = {maxAllowableOffset:'0.00004', geometryPrecision:'5', outFields:'OBJECTID'};
-  // depth tiles for drop-offs and bridge checks (z13)
-  const tx0 = Math.floor(lng2t(w,13)), tx1 = Math.floor(lng2t(w+CELL,13)), ty0 = Math.floor(lat2t(s+CELL,13)), ty1 = Math.floor(lat2t(s,13)), tiles = [];
+  // depth tiles for the cell plus a 2 km margin (z13)
+  const PAD = 0.02, tx0 = Math.floor(lng2t(w-PAD,13)), tx1 = Math.floor(lng2t(w+CELL+PAD,13)), ty0 = Math.floor(lat2t(s+CELL+PAD,13)), ty1 = Math.floor(lat2t(s-PAD,13)), tiles = [];
   for (let x=tx0;x<=tx1;x++) for (let y=ty0;y<=ty1;y++) tiles.push([x,y]);
   const [inlets, reefs, oys, flats, mangs, marinas, hb1, hb2, br1, br2, dem] = await Promise.all([
     query(SRC.inlets,bb), query(SRC.reefs,bb), query(SRC.oyster,bb,simp), query(SRC.flats,bb,simp), query(SRC.mangroves,bb,{maxAllowableOffset:'0.0001', geometryPrecision:'5', outFields:'OBJECTID'}),
@@ -302,22 +302,78 @@ async function loadCell(key){
   // ---- water checks from the depth model (z13 tiles for this cell are loaded above)
   const depthFt = (la,ln) => { const v = demAt(la,ln); return v===null ? null : -(v+0.2)*3.28084; };
   const offsetPt = (p, nx, ny, m) => [p[0] + ny*m/111320, p[1] + nx*m/(111320*Math.cos(p[0]*Math.PI/180))];
-  const sampleOf = (pts, n) => { const out = []; const step = Math.max(1, Math.floor(pts.length/n)); for (let i=0;i<pts.length;i+=step) out.push(pts[i]); return out; };
-  const landFrac = pts => { let land=0, known=0; for (const p of sampleOf(pts,16).concat([centroid(pts)])){ const v = demAt(p[0],p[1]); if (v===null) continue; known++; if (v > 0.3) land++; } return known ? land/known : 0; };
-  const accessNear = (c, rM, minFt) => { for (const f of [0.5,1]) for (let k=0;k<8;k++){ const ang = k*Math.PI/4, d = depthFt(...offsetPt(c, Math.cos(ang), Math.sin(ang), rM*f)); if (d !== null && d >= minFt) return true; } return false; };
-  // oyster bars: merge beds within 250 m; keep bars in the water with a way in
-  const op = oys.flatMap(f => ringsOf(f.geometry)).map(p => ({pts:p[0], c:centroid(p[0])}));
-  OV.oyster.addLayer(L.layerGroup(op.map(p => L.polygon(p.pts, {pane:'habitat', color:'#ffd58a', weight:1, fillColor:'#e8b45a', fillOpacity:.75, interactive:false}))));
-  const used = new Uint8Array(op.length);
-  op.forEach((p,i) => { if (used[i]) return; const grp=[p]; used[i]=1; for (let j=i+1;j<op.length;j++) if (!used[j] && distKm(p.c, op[j].c) < 0.25){ used[j]=1; grp.push(op[j]); }
-    const pts = grp.flatMap(g=>g.pts), c = centroid(grp.map(g=>g.c)); let poly = hull(pts); if (poly.length < 3 || lineLenKm(poly) < 0.25) poly = circle(c[0],c[1],90,12);
-    if (landFrac(poly) > 0.5 || !accessNear(c, 300, 3)) return;
-    push('oyster', 'Oyster bars near '+nearName(c), c, {poly}, {structure:`${grp.length} mapped oyster bar${grp.length>1?'s':''} with shell edges and drop-offs`}); });
-  // tidal flats: only flats that sit in the water (not on marsh or land) and border water deep enough to reach
-  flats.flatMap(f => ringsOf(f.geometry)).map(r => simplify(r[0], 0.00008))
-    .filter(pts => pts.length >= 4 && lineLenKm(pts) >= 0.3 && landFrac(pts) <= 0.3 && accessNear(centroid(pts), 250, 4))
-    .sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,8).forEach(pts => { const c = centroid(pts); push('flat', 'Flat near '+nearName(c), c, {poly:pts}); });
-  // mangrove shorelines: only the edges that face fishable water (2+ ft within 60 m, 3.5+ ft within 130 m)
+  // ---- water grid for this cell (+2 km margin) from the depth model: 30 m pixels
+  const GR = 30, gN = s+CELL+PAD, gWl = w-PAD, dLat = GR/111320, dLng = GR/(111320*Math.cos((s+CELL/2)*Math.PI/180));
+  const GW = Math.ceil((CELL+2*PAD)/dLng), GH = Math.ceil((CELL+2*PAD)/dLat), GN = GW*GH;
+  const pll = (q,r) => [gN-(r+.5)*dLat, gWl+(q+.5)*dLng];
+  const gix = (la,ln) => { const q = Math.floor((ln-gWl)/dLng), r = Math.floor((gN-la)/dLat); return q<0||r<0||q>=GW||r>=GH ? -1 : r*GW+q; };
+  const dep = new Float32Array(GN);
+  for (let r=0;r<GH;r++) for (let q=0;q<GW;q++){ const p = pll(q,r), v = demAt(p[0],p[1]); dep[r*GW+q] = v===null ? NaN : -(v+0.2)*3.28084; }
+  const NB8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  // open water = 2+ ft deep and connected to 6+ ft water (drops ponds, ditches and dead-end creeks)
+  const nav = new Uint8Array(GN), Q = new Int32Array(GN); let qh = 0, qt = 0;
+  for (let i=0;i<GN;i++) if (dep[i] >= 6){ nav[i] = 1; Q[qt++] = i; }
+  while (qh < qt){ const i = Q[qh++], q = i%GW, r = (i/GW)|0;
+    for (const [a,b] of NB8){ const qq=q+a, rr=r+b; if (qq<0||rr<0||qq>=GW||rr>=GH) continue; const j = rr*GW+qq; if (!nav[j] && dep[j] >= 2){ nav[j] = 1; Q[qt++] = j; } } }
+  // distance to open water, in pixels (capped)
+  const dist = new Uint8Array(GN).fill(255); qh = qt = 0;
+  for (let i=0;i<GN;i++) if (nav[i]){ dist[i] = 0; Q[qt++] = i; }
+  while (qh < qt){ const i = Q[qh++], q = i%GW, r = (i/GW)|0, d = dist[i]; if (d >= 12) continue;
+    for (const [a,b] of NB8){ const qq=q+a, rr=r+b; if (qq<0||rr<0||qq>=GW||rr>=GH) continue; const j = rr*GW+qq; if (dist[j] > d+1){ dist[j] = d+1; Q[qt++] = j; } } }
+  const pip = (p, ring) => { let ins = false; for (let i=0, j=ring.length-1; i<ring.length; j=i++){ const a=ring[i], b=ring[j]; if ((a[0]>p[0]) !== (b[0]>p[0]) && p[1] < (b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0]) + a[1]) ins = !ins; } return ins; };
+  const chaikin = r => { let p = r; for (let k=0;k<2;k++){ const o=[]; for (let i=0;i<p.length;i++){ const a=p[i], b=p[(i+1)%p.length]; o.push([a[0]*.75+b[0]*.25, a[1]*.75+b[1]*.25], [a[0]*.25+b[0]*.75, a[1]*.25+b[1]*.75]); } p = o; } return p; };
+  // outline of one labelled blob as rings (outer first, then sizable holes)
+  const trace = (lab, id, q0, r0, q1, r1) => {
+    const v = (q,r) => (q>=q0 && q<=q1 && r>=r0 && r<=r1 && lab[r*GW+q]===id) ? 1 : 0, segs = [];
+    for (let r=r0-1; r<=r1; r++) for (let q=q0-1; q<=q1; q++){
+      const idx = (v(q,r)?8:0)|(v(q+1,r)?4:0)|(v(q+1,r+1)?2:0)|(v(q,r+1)?1:0); if (!idx || idx===15) continue;
+      const T=[q+.5,r], R=[q+1,r+.5], B=[q+.5,r+1], Lp=[q,r+.5];
+      ({1:[[Lp,B]],2:[[B,R]],3:[[Lp,R]],4:[[T,R]],5:[[Lp,T],[B,R]],6:[[T,B]],7:[[Lp,T]],8:[[Lp,T]],9:[[T,B]],10:[[T,R],[Lp,B]],11:[[T,R]],12:[[Lp,R]],13:[[B,R]],14:[[Lp,B]]})[idx].forEach(sg => segs.push(sg));
+    }
+    const key = p => p[0]+','+p[1], at = new Map(); segs.forEach((sg,i) => sg.forEach(p => (at.get(key(p)) || at.set(key(p),[]).get(key(p))).push(i)));
+    const used = new Uint8Array(segs.length), rings = [];
+    segs.forEach((sg,i) => { if (used[i]) return; used[i] = 1; const ring = [sg[0], sg[1]]; let tip = sg[1];
+      for (let g=0; g<100000; g++){ const nx = (at.get(key(tip))||[]).find(j => !used[j]); if (nx===undefined) break; used[nx] = 1; const t = segs[nx]; tip = key(t[0])===key(tip) ? t[1] : t[0]; ring.push(tip); }
+      const ll = ring.map(([q,r]) => pll(q,r)); const sm = chaikin(simplify(ll, 0.00018)); if (sm.length >= 6) rings.push(sm); });
+    rings.sort((a,b) => lineLenKm(b) - lineLenKm(a));
+    return rings.filter((r,i) => i===0 || lineLenKm(r) >= 0.35);
+  };
+  // turn mapped habitat polygons into blobs clipped to reachable water; returns blobs + the kept mask
+  const maskZones = (rings, o) => {
+    const m = new Uint8Array(GN);
+    for (const ring of rings){ let a0=90, a1=-90, n0=180, n1=-180; for (const p of ring){ if (p[0]<a0) a0=p[0]; if (p[0]>a1) a1=p[0]; if (p[1]<n0) n0=p[1]; if (p[1]>n1) n1=p[1]; }
+      const r0 = clamp(Math.floor((gN-a1)/dLat),0,GH-1), r1 = clamp(Math.ceil((gN-a0)/dLat),0,GH-1), q0 = clamp(Math.floor((n0-gWl)/dLng),0,GW-1), q1 = clamp(Math.ceil((n1-gWl)/dLng),0,GW-1);
+      for (let r=r0;r<=r1;r++) for (let q=q0;q<=q1;q++){ const i = r*GW+q; if (!m[i] && pip(pll(q,r), ring)) m[i] = 1; } }
+    for (let g=0; g<(o.grow||0); g++){ const c = m.slice(); for (let i=0;i<GN;i++) if (c[i]){ const q=i%GW; if (q>0) m[i-1]=1; if (q<GW-1) m[i+1]=1; if (i>=GW) m[i-GW]=1; if (i+GW<GN) m[i+GW]=1; } }
+    for (let i=0;i<GN;i++) if (m[i] && (!(dep[i] >= o.minFt && dep[i] <= o.maxFt) || dist[i] > o.maxDist || (o.not && o.not[i]))) m[i] = 0;
+    if (o.open){ // drop slivers narrower than ~3 pixels (90 m): erode then grow back inside the original
+      const orig = m.slice(), er = new Uint8Array(GN);
+      for (let k=0;k<o.open;k++){ const c = m.slice(); for (let i=GW;i<GN-GW;i++){ const q=i%GW; er[i] = c[i] && q>0 && q<GW-1 && c[i-1] && c[i+1] && c[i-GW] && c[i+GW] ? 1 : 0; } m.set(er); }
+      for (let k=0;k<o.open;k++){ const c = m.slice(); for (let i=GW;i<GN-GW;i++) if (!c[i] && orig[i] && (c[i-1]||c[i+1]||c[i-GW]||c[i+GW])) m[i] = 1; }
+    }
+    const lab = new Int32Array(GN), blobs = [], keep = new Uint8Array(GN); let id = 0;
+    for (let i0=0;i0<GN;i0++){ if (!m[i0] || lab[i0]) continue; id++; lab[i0] = id; qh = qt = 0; Q[qt++] = i0;
+      let n=0, sq=0, sr=0, q0=1e9, q1=-1, r0=1e9, r1=-1;
+      while (qh < qt){ const i = Q[qh++], q = i%GW, r = (i/GW)|0; n++; sq+=q; sr+=r; if (q<q0) q0=q; if (q>q1) q1=q; if (r<r0) r0=r; if (r>r1) r1=r;
+        for (const [a,b] of NB8){ const qq=q+a, rr=r+b; if (qq<0||rr<0||qq>=GW||rr>=GH) continue; const j = rr*GW+qq; if (m[j] && !lab[j]){ lab[j] = id; Q[qt++] = j; } } }
+      if (n < o.minPx) continue;
+      blobs.push({id, n, c:pll(sq/n, sr/n), box:[q0,r0,q1,r1]});
+    }
+    // keep the biggest blobs whose centre is in this cell
+    const out = blobs.filter(b => inBox(b.c)).sort((a,b) => b.n - a.n).slice(0, o.max);
+    out.forEach(b => { for (let r=b.box[1]; r<=b.box[3]; r++) for (let q=b.box[0]; q<=b.box[2]; q++) if (lab[r*GW+q]===b.id) keep[r*GW+q] = 1; b.rings = trace(lab, b.id, ...b.box); });
+    return {blobs: out.filter(b => b.rings.length), keep};
+  };
+  // oyster bars: beds within ~120 m merged, cut to the water around them
+  const oyRings = oys.flatMap(f => ringsOf(f.geometry)).map(p => p[0]);
+  OV.oyster.addLayer(L.layerGroup(oyRings.map(p => L.polygon(p, {pane:'habitat', color:'#ffd58a', weight:1, fillColor:'#e8b45a', fillOpacity:.75, interactive:false}))));
+  const OY = maskZones(oyRings, {grow:2, minFt:-1.5, maxFt:8, maxDist:6, minPx:10, max:10});
+  OY.blobs.forEach(b => push('oyster', 'Oyster bars near '+nearName(b.c), b.c, {poly:b.rings}, {structure:'Mapped oyster bars with shell edges; fish the edges and the cuts between bars'}));
+  // tidal flats: the shallow water inside mapped flats that touches open water; no overlap with oyster zones
+  const FZ = maskZones(flats.flatMap(f => ringsOf(f.geometry)).map(p => p[0]), {grow:0, open:1, minFt:-0.7, maxFt:5, maxDist:5, minPx:30, max:8, not:OY.keep});
+  FZ.blobs.forEach(b => push('flat', 'Flat near '+nearName(b.c), b.c, {poly:b.rings}));
+  // mangrove shorelines: edges with land behind and open water in front (not ponds or dead-end creeks)
+  const at = p => gix(p[0],p[1]);
   const runs = [];
   mangs.flatMap(f => ringsOf(f.geometry)).map(r => simplify(r[0], 0.00008)).filter(pts => pts.length >= 4 && lineLenKm(pts) >= 0.35).forEach(pts => {
     let run = null;
@@ -325,15 +381,13 @@ async function loadCell(key){
       const A = pts[i], B = pts[i+1], m = [(A[0]+B[0])/2, (A[1]+B[1])/2];
       const dx = (B[1]-A[1])*Math.cos(m[0]*Math.PI/180), dy = B[0]-A[0], len = Math.hypot(dx,dy) || 1, nx = -dy/len, ny = dx/len;
       let ok = false;
-      for (const sgn of [1,-1]){ const d1 = depthFt(...offsetPt(m, nx*sgn, ny*sgn, 60)), d2 = depthFt(...offsetPt(m, nx*sgn, ny*sgn, 130));
-        if (d1 !== null && d1 >= 2 && Math.max(d1, d2 ?? 0) >= 3.5){ ok = true; break; } }
+      for (const sgn of [1,-1]){ const i1 = at(offsetPt(m, nx*sgn, ny*sgn, 60)), i2 = at(offsetPt(m, nx*sgn, ny*sgn, 130)), i0 = at(offsetPt(m, -nx*sgn, -ny*sgn, 45));
+        if (i1<0 || i2<0 || i0<0) continue;
+        if (dep[i1] >= 1.5 && dist[i1] <= 1 && nav[i2] && !(dep[i0] >= 1)){ ok = true; break; } }
       if (ok){ if (!run){ run = [A]; } run.push(B); } else if (run){ runs.push(run); run = null; }
     }
     if (run) runs.push(run);
   });
-  runs.filter(r => lineLenKm(r) >= 0.4).flatMap(r => splitLine(r, 0.9)).filter(r => lineLenKm(r) >= 0.3)
-    .sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,6)
-    .forEach(seg => { const c = seg[Math.floor(seg.length/2)]; push('mangrove', 'Mangrove shoreline near '+nearName(c), c, {line:seg}, {structure:'Mangrove edge on fishable water; high tide pushes fish up under the roots'}); });
   // docks and marinas
   marinas.filter(f => { const p=f.properties||{}, nm=p.Name||'', us=p.Usage||'';
       return !/condo|villa|apartment|association|\bhoa\b|tower|residen|club|yacht sales|kayak|boats?$|rental/i.test(nm) && (/public/i.test(us) || /park|pier|ramp|marina|fish/i.test(nm)); })
@@ -368,6 +422,12 @@ async function loadCell(key){
     if (lineLenKm(chain) > 0.25) chains.push({pts:simplify(chain,0.00005), st:st/chain.length}); });
   chains.sort((a,b) => b.st*lineLenKm(b.pts) - a.st*lineLenKm(a.pts)).slice(0,14)
     .forEach(ch => splitLine(ch.pts, 1.0).slice(0,2).forEach(seg => { const c = seg[Math.floor(seg.length/2)]; push('dropoff', 'Drop-off near '+nearName(c), c, {line:seg}); }));
+  // mangrove edges that run along a drop-off duplicate it, so the drop-off wins
+  const dropPts = add.filter(z => z.type==='dropoff').flatMap(z => z.geom.line);
+  const nearDrop = seg => seg.filter((p,i) => i%2===0).some(p => dropPts.some(d => Math.abs(d[0]-p[0]) < 0.0012 && distKm(p,d) < 0.12));
+  runs.filter(r => lineLenKm(r) >= 0.4).flatMap(r => splitLine(r, 0.9)).filter(r => lineLenKm(r) >= 0.3)
+    .filter(seg => !nearDrop(seg)).sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,6)
+    .forEach(seg => { const c = seg[Math.floor(seg.length/2)]; push('mangrove', 'Mangrove shoreline near '+nearName(c), c, {line:seg}, {structure:'Mangrove edge on fishable water; high tide pushes fish up under the roots'}); });
   // hard bottom overlay
   hb1.concat(hb2).flatMap(f => ringsOf(f.geometry)).forEach(r => OV.hardbottom.addLayer(L.polygon(r, {pane:'habitat', color:'#d9b3ff', weight:.8, fillColor:'#c48cff', fillOpacity:.38, interactive:false})));
   // register
@@ -640,7 +700,6 @@ function paintScrub(){
     g += `<polyline points="${vals.map((v,h)=>`${h*10},${(58-(v-lo)/((hi-lo)||1)*50).toFixed(1)}`).join(' ')}" fill="none" stroke="#e9f3f1" stroke-width="1.6" vector-effect="non-scaling-stroke" opacity=".85"/>`; }
   const x = HRS[cur].h*10+5; g += `<line x1="${x}" x2="${x}" y1="0" y2="64" stroke="#62d8c7" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
   svg.innerHTML = g; $('scrub').setAttribute('aria-valuenow', HRS[cur].h); $('scrub').setAttribute('aria-valuetext', hourLabel(cur));
-  $('tlabel').innerHTML = `<b>${DAYS[d].wd}</b> · ${sel==null?'best spot in view':'this spot'} by hour`;
 }
 (function(){
   const el = $('scrub'); let drag = false;
@@ -698,12 +757,16 @@ function locate(){
 }
 $('locate').onclick = locate;
 
-// ---------------- full-screen height (home-screen app fills the whole screen)
+// ---------------- full-screen height
+// iPhone home-screen apps can stop the page one status bar short of the screen bottom; that strip already
+// clears the home indicator, so the dock drops its own bottom padding there (the strip is painted the panel colour).
 function fitHeight(){
   const sa = matchMedia('(display-mode: standalone)').matches || navigator.standalone, portrait = innerHeight >= innerWidth;
-  const h = sa && portrait ? Math.max(innerHeight, screen.height) : innerHeight;
-  document.documentElement.style.setProperty('--app-h', h + 'px'); map.invalidateSize();
+  document.documentElement.classList.toggle('vp-short', !!(sa && portrait && screen.height - innerHeight > 20));
+  map.invalidateSize();
 }
+// keep the map credit just above the dock
+new ResizeObserver(() => document.documentElement.style.setProperty('--dock-h', $('dock').offsetHeight + 'px')).observe($('dock'));
 addEventListener('resize', fitHeight); addEventListener('orientationchange', () => setTimeout(fitHeight, 300)); fitHeight();
 
 // ---------------- boot
