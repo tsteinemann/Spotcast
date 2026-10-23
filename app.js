@@ -936,6 +936,11 @@ addEventListener('resize', fitHeight); addEventListener('orientationchange', () 
 // ---------------- boot
 (async function boot(){
   window.__scBoot = true;
+  // block page zoom from pinches and double-taps on the panels (iOS ignores user-scalable=no); the map's own pinch zoom is untouched
+  ['gesturestart','gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), {passive:false}));
+  let lastTouch = 0; document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouch < 320 && !e.target.closest('#map')) e.preventDefault(); lastTouch = now; }, {passive:false});
+  // where supported (Android home-screen app), lock to portrait
+  try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(()=>{}); } catch(e){}
   // when a new version takes over, reload once so it shows right away
   if (navigator.serviceWorker && navigator.serviceWorker.controller){ let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (!done){ done = true; location.reload(); } }); }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(()=>{}); });

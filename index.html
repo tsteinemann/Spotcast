@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Spotcast</title>
 <meta name="description" content="Spotcast: the forecast for where to fish. Florida fishing spots rated hourly from live tides, wind, moon and light.">
 <meta name="theme-color" content="#0B1F24">
@@ -29,7 +29,19 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-html{background:var(--panel)}
+html{background:var(--panel);-webkit-text-size-adjust:100%;text-size-adjust:100%}
+/* the panels never zoom (double-tap or pinch); the map keeps its own pinch zoom */
+body{touch-action:manipulation}
+.rotate{display:none}
+@media (orientation:landscape) and (max-height:520px){
+  .rotate{display:flex;position:fixed;inset:0;z-index:2000;background:var(--sea);color:var(--fg);flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;font-family:var(--display)}
+  .rotate svg{color:var(--accent);animation:tilt 1.6s ease-in-out infinite}
+  .rotate b{font-size:22px;font-weight:700}
+  .rotate span{color:var(--muted);font-family:var(--body);font-size:15px}
+  #app{visibility:hidden}
+}
+@keyframes tilt{0%,30%{transform:rotate(-90deg)}60%,100%{transform:rotate(0)}}
+@media (prefers-reduced-motion:reduce){.rotate svg{animation:none}}
 body{background:var(--sea);color:var(--fg);font-family:var(--body);font-size:15px;overflow:hidden;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit}
@@ -223,6 +235,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 </style>
 </head>
 <body>
+<div class="rotate" role="alert"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg><b>Turn your phone upright</b><span>Spotcast is made for portrait.</span></div>
 <div id="app">
   <div id="map" aria-label="Map"></div>
   <div class="top">
