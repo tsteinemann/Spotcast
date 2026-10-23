@@ -227,6 +227,15 @@ const ContourLayer = L.GridLayer.extend({
 const contours = new ContourLayer({minZoom:11, maxZoom:19, pane:'habitat'});
 
 // ---------------- layers panel
+// spot types the user wants on the map (drop-offs start off: there are many and they crowd the other spots)
+const TYPE_CHIPS = [['pass','Passes'],['bridge','Bridges'],['flat','Flats'],['mangrove','Mangroves'],['oyster','Oyster bars'],['dock','Docks'],['reef','Reefs'],['dropoff','Drop-offs']];
+const SHOW = new Set(store.get('sz3-types', TYPE_CHIPS.map(t => t[0]).filter(k => k !== 'dropoff')));
+function paintTypeChips(){
+  $('typeChips').innerHTML = TYPE_CHIPS.map(([k,l]) => `<button type="button" data-k="${k}" aria-pressed="${SHOW.has(k)}">${l}</button>`).join('');
+  $('typeChips').querySelectorAll('button').forEach(b => b.onclick = () => { const k = b.dataset.k; SHOW.has(k) ? SHOW.delete(k) : SHOW.add(k); store.set('sz3-types', [...SHOW]);
+    ZONES.forEach(z => { if (z.type !== k) return; SHOW.has(k) ? zoneLayer.addLayer(z.layer) : zoneLayer.removeLayer(z.layer); });
+    if (sel != null && !SHOW.has(ZONES[sel].type)) selectZone(null); paintTypeChips(); refresh(); });
+}
 const OVS = ['labels','contours','oyster','reefs','hardbottom'];
 const LS = Object.assign({base:'sat', labels:true, contours:false, oyster:false, reefs:true, hardbottom:false}, store.get('sz2-layers', {}));
 const OV = {oyster:L.layerGroup(), reefs:L.layerGroup(), hardbottom:L.layerGroup()};
@@ -243,6 +252,7 @@ function applyLayers(){
 }
 document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { LS.base = b.dataset.base; applyLayers(); });
 OVS.forEach(k => $('ov-'+k).onchange = e => { LS[k] = e.target.checked; applyLayers(); });
+paintTypeChips();
 $('layersBtn').onclick = () => { const p=$('layersPanel'); p.hidden = !p.hidden; $('layersBtn').setAttribute('aria-expanded', !p.hidden); if (!p.hidden && typeof openSearch === 'function') openSearch(false); };
 $('zin').onclick = () => map.zoomIn(); $('zout').onclick = () => map.zoomOut();
 applyLayers();
@@ -439,7 +449,7 @@ function nearestStation(c){ let best=null, bd=1e9; for (const s of STATIONS.tide
 function drawZone(z){
   const opts = {pane:'zones', renderer:zoneRenderer};
   z.layer = z.geom.line ? L.polyline(z.geom.line, Object.assign(opts, {weight:7, lineCap:'round'})) : L.polygon(z.geom.poly, Object.assign(opts, {weight:2}));
-  z.layer.on('click', () => selectZone(z.k)); zoneLayer.addLayer(z.layer);
+  z.layer.on('click', () => selectZone(z.k)); if (SHOW.has(z.type)) zoneLayer.addLayer(z.layer);
 }
 
 // ---------------- tides, weather, sun & moon
@@ -527,7 +537,7 @@ function score(k, i){
   SCORE.set(key, out); return out;
 }
 function visibleZones(){
-  const b = map.getBounds().pad(-0.05); return map.getZoom() < 11 ? [] : ZONES.filter(z => b.contains(z.c));
+  const b = map.getBounds().pad(-0.05); return map.getZoom() < 11 ? [] : ZONES.filter(z => SHOW.has(z.type) && b.contains(z.c));
 }
 function bestOfDay(d, list){
   const val = i => list.reduce((m,z) => Math.max(m, score(z.k,i).total), 0);
