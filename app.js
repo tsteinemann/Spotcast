@@ -112,7 +112,7 @@ const plans = {};
 
 // ---------------- map
 const map = L.map('map', {zoomControl:false, zoomSnap:.5, minZoom:7, maxZoom:19, maxBounds:[[23.6,-88.6],[31.6,-79.0]], tap:false});
-map.attributionControl.setPrefix(false);
+map.attributionControl.setPrefix(false); map.attributionControl.setPosition('bottomleft');
 map.createPane('habitat').style.zIndex = 410;
 map.createPane('zones').style.zIndex = 450;
 map.createPane('labels').style.zIndex = 430; map.getPane('labels').style.pointerEvents = 'none';
@@ -134,8 +134,26 @@ const NEWER = [ // [tileset, west, south, east, north, max native zoom]
   ['20261012a',-89.2001,30.1124,-86.8624,30.8126,19],['20261013a',-85.5751,29.6249,-85.2249,30.0501,19]];
 const ArcExport = L.TileLayer.extend({ getTileUrl(c){ const sz = 2*MERC/2**c.z, x0 = -MERC + c.x*sz, y1 = MERC - c.y*sz;
   return `${this._url}?bbox=${x0},${y1-sz},${x0+sz},${y1}&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&f=image`; } });
+// Esri leaves some water areas solid black at close zooms (e.g. parts of Charlotte Harbor). Those pure-black pixels are made
+// see-through, and a lower-detail copy of the same imagery underneath fills them in.
+const CleanTiles = L.TileLayer.extend({
+  createTile(coords, done){
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => { const g = c.getContext('2d', {willReadFrequently:true}); g.drawImage(img, 0, 0, 256, 256);
+      try { const d = g.getImageData(0, 0, 256, 256), p = d.data; let n = 0;
+        for (let i=0; i<p.length; i+=4) if (p[i] < 7 && p[i+1] < 7 && p[i+2] < 7){ p[i+3] = 0; n++; }
+        if (n) g.putImageData(d, 0, 0); } catch(e){}
+      done(null, c); };
+    img.onerror = e => done(e, c);
+    img.src = this.getTileUrl(coords);
+    return c;
+  }
+});
+const ESRI_IMG = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const sat = L.layerGroup([
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxNativeZoom:18, maxZoom:19, zIndex:1, attribution:'Imagery © Esri, Maxar'}),
+  L.tileLayer(ESRI_IMG, {maxNativeZoom:10, maxZoom:19, zIndex:0, crossOrigin:'anonymous'}),
+  new CleanTiles(ESRI_IMG, {maxNativeZoom:18, maxZoom:19, zIndex:1, attribution:'Imagery © Esri, Maxar'}),
   ...NEWER.map(([id,w,s,e,n,mz], i) => L.tileLayer(`https://stormscdn.ngs.noaa.gov/${id}-rgb/{z}/{x}/{y}`, {bounds:[[s,w],[n,e]], minZoom:11, maxNativeZoom:mz, maxZoom:19, zIndex:2+i, attribution: i===0 ? 'NOAA NGS, City of Sarasota' : ''})),
   new ArcExport('https://srqgis.sarasotafl.gov/server/rest/services/City_Aerials_2026/MapServer/export', {bounds:[[27.27,-82.60],[27.40,-82.46]], minZoom:12, maxZoom:19, zIndex:2+NEWER.length})
 ]);
@@ -494,9 +512,13 @@ async function loadCell(key){
   const NB8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
   // open water = 2+ ft deep and connected to 6+ ft water (drops ponds, ditches and dead-end creeks)
   const nav = new Uint8Array(GN), Q = new Int32Array(GN); let qh = 0, qt = 0;
-  for (let i=0;i<GN;i++) if (dep[i] >= 6){ nav[i] = 1; Q[qt++] = i; }
+  // shallow coasts (Big Bend, Nature Coast, Florida Bay) rarely reach 6 ft near shore, so the bar adapts:
+  // seed from 6 ft water if there's a fair amount of it, otherwise 3.5 ft, otherwise 2.5 ft; channels need 2 ft (1.5 ft on shallow coasts)
+  let deep = 0, mid = 0; for (let i=0;i<GN;i++){ if (dep[i] >= 6) deep++; else if (dep[i] >= 3.5) mid++; }
+  const seedFt = deep > GN*0.01 ? 6 : (deep+mid) > GN*0.01 ? 3.5 : 2.5, chanFt = seedFt === 6 ? 2 : 1.5;
+  for (let i=0;i<GN;i++) if (dep[i] >= seedFt){ nav[i] = 1; Q[qt++] = i; }
   while (qh < qt){ const i = Q[qh++], q = i%GW, r = (i/GW)|0;
-    for (const [a,b] of NB8){ const qq=q+a, rr=r+b; if (qq<0||rr<0||qq>=GW||rr>=GH) continue; const j = rr*GW+qq; if (!nav[j] && dep[j] >= 2){ nav[j] = 1; Q[qt++] = j; } } }
+    for (const [a,b] of NB8){ const qq=q+a, rr=r+b; if (qq<0||rr<0||qq>=GW||rr>=GH) continue; const j = rr*GW+qq; if (!nav[j] && dep[j] >= chanFt){ nav[j] = 1; Q[qt++] = j; } } }
   // distance to open water, in pixels (capped)
   const dist = new Uint8Array(GN).fill(255); qh = qt = 0;
   for (let i=0;i<GN;i++) if (nav[i]){ dist[i] = 0; Q[qt++] = i; }
@@ -634,6 +656,7 @@ function ensureTide(id){
     .catch(() => TIDES.set(id, {name, failed:true}));
 }
 function tideH(id){
+  if (!TIDES.has(id)) ensureTide(id); // fetch on first use (e.g. the station nearest the map center)
   const T = TIDES.get(id); if (!T || !T.ev) return null;
   if (T.hT0 !== T0){ const ev = T.ev; T.h = HRS.map(({t}) => { for (let k=0;k<ev.length-1;k++){ const a=ev[k], b=ev[k+1]; if (t>=a.t && t<=b.t){ const f=(t-a.t)/(b.t-a.t); return a.v+(b.v-a.v)*(1-Math.cos(Math.PI*f))/2; } } return ev[ev.length-1].v; }); T.hT0 = T0; }
   return T.h;
@@ -645,7 +668,9 @@ async function loadConditions(c){
   const tzGuess = (c[1] < -85.0 && c[0] > 29.5) ? 'America/Chicago' : 'America/New_York';
   const base = {c, wx:null, waterTemp:null};
   let tz = tzGuess, periods = null;
-  try { const pt = await getJSON(`https://api.weather.gov/points/${c[0].toFixed(4)},${c[1].toFixed(4)}`); tz = pt.properties.timeZone || tz; periods = (await getJSON(pt.properties.forecastHourly)).properties.periods; } catch(e){}
+  try { const pt = await getJSON(`https://api.weather.gov/points/${c[0].toFixed(4)},${c[1].toFixed(4)}`); tz = pt.properties.timeZone || tz;
+    // the NWS grid endpoints often fail once and then succeed, so try up to three times
+    for (let k=0; k<3 && !(periods && periods.length); k++){ try { periods = (await getJSON(pt.properties.forecastHourly)).properties.periods; } catch(e){ await new Promise(r => setTimeout(r, 1200*(k+1))); } } } catch(e){}
   if (!periods || !periods.length){ // backup forecast: Open-Meteo (free, no key) in the same shape as the NWS hourly periods
     try { const j = await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${c[0].toFixed(4)}&longitude=${c[1].toFixed(4)}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,precipitation_probability,weather_code,is_day&wind_speed_unit=mph&temperature_unit=fahrenheit&timezone=GMT&forecast_days=8`);
       const h = j.hourly; periods = h.time.map((t,k) => ({startTime:t+':00Z', windSpeed:Math.round(h.wind_speed_10m[k])+' mph', windDirection:card(h.wind_direction_10m[k]), temperature:Math.round(h.temperature_2m[k]),
@@ -797,15 +822,18 @@ function toggleDock(want){ const isOpen = !$('dock').classList.contains('collaps
     if (!open && dy < -24){ y0 = null; dock.style.transform = ''; toggleDock(true); } });
   const end = () => { if (y0 === null) return; y0 = null; dock.style.transition = 'transform .18s'; dock.style.transform = '';
     const open = !dock.classList.contains('collapsed');
-    if (!moved){ if (sel != null) selectZone(null); else toggleDock(!open); } else if (open && dy > 50) toggleDock(false); };
-  head.addEventListener('pointerup', end); head.addEventListener('pointercancel', () => { y0 = null; dock.style.transform = ''; });
-  head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleDock(dock.classList.contains('collapsed')); } });
+    if (moved){ dragged = Date.now(); if (open && dy > 50) toggleDock(false); } };
+  head.addEventListener('pointerup', end);
+  // a plain tap is handled on click (which lands on the header itself), not on pointerup: toggling on pointerup moved the
+  // dock first, so the browser's click then landed on whatever slid under the finger (often a spot in the list)
+  let dragged = 0;
+  head.addEventListener('click', () => { if (Date.now() - dragged < 400) return; if (sel != null) selectZone(null); else toggleDock($('dock').classList.contains('collapsed')); }); head.addEventListener('pointercancel', () => { y0 = null; dock.style.transform = ''; });
 })();
 setDock(dockOpen);
 function paintBody(){
   const el = $('body');
   if (!COND){ el.innerHTML = `<div class="eyebrow">Loading conditions</div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:85%"></div>`; return; }
-  if (map.getZoom() < 11){ el.innerHTML = `<div class="empty"><b>Zoom in to see spots</b>Spots load automatically once you zoom in on the water.</div>${installHtml()}`; wireInstall(); return; }
+  if (map.getZoom() < 11 && sel == null){ el.innerHTML = `<div class="empty"><b>Zoom in to see spots</b>Spots load automatically once you zoom in on the water.</div>${installHtml()}`; wireInstall(); return; }
   if (sel != null) return paintSpot();
   const vis = visibleZones();
   if (!vis.length){ el.innerHTML = cellsBusy.size ? `<div class="eyebrow">Finding spots in view</div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:85%"></div>` : `<div class="empty"><b>No mapped spots in view</b>Pan to the coast or zoom out a little. Spots come from passes, bridges, drop-offs, flats, mangroves, oyster bars, docks and reefs.</div>${installHtml()}`; wireInstall(); return; }
@@ -955,7 +983,11 @@ function dockH(){ return document.querySelector('.dock').offsetHeight || Math.ro
 function selectZone(k){
   sel = k; document.querySelector('.dock').classList.toggle('detail', k!=null); setDock(k!=null ? true : dockOpen); refresh();
   if (k!=null){ const z = ZONES[k], wide = matchMedia('(min-width:900px)').matches, bnds = z.layer.getBounds();
-    map.fitBounds(bnds, wide ? {paddingTopLeft:[460,170], paddingBottomRight:[60,60], maxZoom:16} : {paddingTopLeft:[40,170], paddingBottomRight:[40, dockH()+20], maxZoom:16});
+    // fit the spot into the strip of map between the header and the dock; on small phones that strip can be thin,
+    // so cap the bottom padding and never zoom out past 13 (spots disappear below 11)
+    const H0 = map.getSize().y, topPad = 170, botPad = Math.min(dockH()+20, Math.max(40, H0 - topPad - 140));
+    map.fitBounds(bnds, wide ? {paddingTopLeft:[460,170], paddingBottomRight:[60,60], maxZoom:16} : {paddingTopLeft:[40,topPad], paddingBottomRight:[40, botPad], maxZoom:16, animate:false});
+    if (map.getZoom() < 13){ map.setZoom(13, {animate:false}); const c = map.latLngToContainerPoint(bnds.getCenter()), want = topPad + Math.max(60, (H0 - topPad - dockH())/2); map.panBy([0, c.y - want], {animate:false}); }
     $('body').scrollTop = 0; }
 }
 
@@ -1040,7 +1072,15 @@ function fitHeight(){
   map.invalidateSize();
 }
 // keep the map credit just above the dock
-new ResizeObserver(() => document.documentElement.style.setProperty('--dock-h', $('dock').offsetHeight + 'px')).observe($('dock'));
+// keep the map controls clear of the header and the dock; if there isn't room, drop the +/- buttons (pinch still zooms)
+function fitRail(){
+  document.documentElement.style.setProperty('--dock-h', $('dock').offsetHeight + 'px');
+  const rail = document.querySelector('.rail'), top = document.querySelector('.top'); if (!rail || !top) return;
+  rail.classList.remove('tight');
+  const room = $('app').clientHeight - $('dock').offsetHeight - top.getBoundingClientRect().bottom - 24;
+  if (rail.offsetHeight > room) rail.classList.add('tight');
+}
+new ResizeObserver(fitRail).observe($('dock')); new ResizeObserver(fitRail).observe($('app'));
 addEventListener('resize', fitHeight); addEventListener('orientationchange', () => setTimeout(fitHeight, 300)); fitHeight();
 
 // ---------------- boot
@@ -1048,7 +1088,7 @@ addEventListener('resize', fitHeight); addEventListener('orientationchange', () 
   window.__scBoot = true;
   // block page zoom from pinches and double-taps on the panels (iOS ignores user-scalable=no); the map's own pinch zoom is untouched
   ['gesturestart','gesturechange'].forEach(t => document.addEventListener(t, e => e.preventDefault(), {passive:false}));
-  let lastTouch = 0; document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouch < 320 && !e.target.closest('#map')) e.preventDefault(); lastTouch = now; }, {passive:false});
+  // (double-tap zoom on the panels is already off via touch-action:manipulation, so quick repeated taps still register)
   // where supported (Android home-screen app), lock to portrait
   try { screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait').catch(()=>{}); } catch(e){}
   // when a new version takes over, reload once so it shows right away

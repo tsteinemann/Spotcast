@@ -29,7 +29,7 @@ function paintPlanner(){
 // ---- helpers
 const rainPen = (pop, sf) => (/thunder/i.test(sf||'') ? 10 : 0) + (pop >= 70 ? 14 : pop >= 50 ? 9 : pop >= 30 ? 4 : 0);
 function tideEvents(d){
-  const c = map.getCenter(), st = nearestStation([c.lat, c.lng]), T = st && TIDES.get(st);
+  const c = map.getCenter(), st = nearestStation([c.lat, c.lng]); if (st) tideH(st); const T = st && TIDES.get(st);
   if (!T || !T.ev) return null;
   const a = T0 + DAYS[d].idx[0]*3600e3, b = a + DAYS[d].idx.length*3600e3, ev = T.ev, out = [];
   for (let k=1;k<ev.length-1;k++) if (ev[k].t >= a && ev[k].t < b) out.push({t:ev[k].t, v:ev[k].v, hi: ev[k].v > ev[k-1].v});

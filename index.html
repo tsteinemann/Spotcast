@@ -77,7 +77,9 @@ button{font:inherit;color:inherit}
 .where-btn .hint{flex:none;color:var(--muted);font-size:12px;font-weight:500}
 .when-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .best-link{all:unset;cursor:pointer;color:var(--accent);font-weight:600;font-size:13px;white-space:nowrap}
-.rail{position:absolute;z-index:690;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--dock-h,120px) + 12px);display:grid;gap:10px;transition:opacity .15s}
+.rail{position:absolute;z-index:690;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--dock-h,120px) + 14px);display:grid;gap:8px;transition:opacity .15s}
+.rail.tight .stack:last-child{display:none}
+.leaflet-bottom.leaflet-left .leaflet-control-attribution{margin:0 0 2px 8px;border-radius:6px;max-width:calc(100vw - 90px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dock-open .rail{opacity:0;pointer-events:none}
 .stack{display:grid;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:rgba(15,32,37,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .stack .ctl{border:0;border-radius:0;background:transparent}
