@@ -365,7 +365,50 @@ function showPlace(html, m, tok, update){
   if (!update){ const pt = map.latLngToContainerPoint(m.getLatLng()), top = (document.querySelector('.top')?.offsetHeight||140)+30, bottom = map.getSize().y - (document.querySelector('.dock')?.offsetHeight||160) - el.offsetHeight - 24;
     if (pt.y < top || pt.y > bottom) map.panBy([0, pt.y - (top + Math.max(0,bottom-top)/2)], {animate:true}); }
 }
-function closePlace(){ $('placeCard').hidden = true; $('app').classList.remove('pop-open'); if (placeOn && placeOn.getElement()) placeOn.getElement().classList.remove('pl-on'); placeOn = null; placeTok++; }
+// ---- coordinates: decimal (phones, Google/Apple Maps) and degrees + decimal minutes (most chartplotters)
+const fmtDec = (la, ln) => la.toFixed(5) + ', ' + ln.toFixed(5);
+const fmtDDM = (la, ln) => { const f = (v, p, n) => { const a = Math.abs(v), d = Math.floor(a); return `${d}° ${((a-d)*60).toFixed(3)}' ${v >= 0 ? p : n}`; }; return f(la,'N','S') + '  ' + f(ln,'E','W'); };
+function copyText(txt, btn){
+  const done = () => { if (btn){ const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = t, 1400); } else toast('Copied'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, () => fallback());
+  else fallback();
+  function fallback(){ const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly',''); ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch(e){ toast(txt); } ta.remove(); }
+}
+function coordBlock(la, ln){
+  return `<div class="coords"><button type="button" class="coord" data-copy="${fmtDec(la,ln)}"><span>Decimal</span><b>${fmtDec(la,ln)}</b><i>Copy</i></button>
+    <button type="button" class="coord" data-copy="${fmtDDM(la,ln)}"><span>Chartplotter</span><b>${fmtDDM(la,ln)}</b><i>Copy</i></button></div>`;
+}
+const wireCoords = root => root.querySelectorAll('.coord').forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.dataset.copy, b.querySelector('i')); });
+// press and hold anywhere on the map to drop a pin and get its coordinates
+const PIN_ICON = L.divIcon({className:'drop-pin', iconSize:[28,40], iconAnchor:[14,38],
+  html:'<svg width="28" height="40" viewBox="0 0 28 40" aria-hidden="true"><path d="M14 1C6.8 1 1 6.7 1 13.8 1 23.5 14 39 14 39s13-15.5 13-25.2C27 6.7 21.2 1 14 1z" fill="#62d8c7" stroke="#06211d" stroke-width="2"/><circle cx="14" cy="14" r="5" fill="#06211d"/></svg>'});
+let pin = null, lastPinAt = 0;
+function dropPin(ll){
+  const now = Date.now(); if (now - lastPinAt < 800) return; lastPinAt = now;
+  if (navigator.vibrate) try { navigator.vibrate(15); } catch(e){}
+  const la = ll.lat, ln = ll.lng;
+  if (pin) map.removeLayer(pin);
+  pin = L.marker(ll, {icon:PIN_ICON, pane:'places', keyboard:false, interactive:false}).addTo(map);
+  const v = demAt(la, ln), ft = v === null ? null : -(v+0.2)*3.28084;
+  const depth = ft === null ? '' : ft >= 0.5 ? `About ${Math.round(ft)} ft deep at low tide` : 'On land or exposed at low tide';
+  const near = nearName([la, ln]);
+  const html = pcard('Dropped pin', `Near ${esc(near)}${depth ? ' · ' + depth : ''}`, coordBlock(la, ln),
+    `<div class="pc-foot"><button type="button" class="pc-btn" id="pinShare">Share</button><a class="pc-btn ghost" href="https://maps.apple.com/?ll=${la.toFixed(6)},${ln.toFixed(6)}&q=Spotcast%20pin" target="_blank" rel="noopener">Open in Maps</a></div><div class="pc-note">Depth is from NOAA's elevation model and is approximate. Not for navigation.</div>`);
+  showPlace(html, pin, ++placeTok);
+  wireCoords($('placeBody'));
+  $('pinShare').onclick = () => { const txt = `Spotcast pin near ${near}\n${fmtDec(la,ln)}\n${fmtDDM(la,ln)}\nhttps://maps.apple.com/?ll=${la.toFixed(6)},${ln.toFixed(6)}`;
+    if (navigator.share) navigator.share({title:'Spotcast pin', text:txt}).catch(()=>{}); else copyText(txt, $('pinShare')); };
+}
+map.on('contextmenu', e => dropPin(e.latlng));
+(function(){ // long-press fallback for touch screens that don't send a context menu event
+  const el = map.getContainer(); let t = null, sx = 0, sy = 0;
+  const cancel = () => { if (t){ clearTimeout(t); t = null; } };
+  el.addEventListener('touchstart', e => { cancel(); if (e.touches.length !== 1 || e.target.closest('.leaflet-marker-icon')) return; const p = e.touches[0]; sx = p.clientX; sy = p.clientY;
+    t = setTimeout(() => { t = null; const r = el.getBoundingClientRect(); dropPin(map.containerPointToLatLng([sx - r.left, sy - r.top])); }, 550); }, {passive:true});
+  el.addEventListener('touchmove', e => { const p = e.touches[0]; if (e.touches.length !== 1 || Math.hypot(p.clientX-sx, p.clientY-sy) > 10) cancel(); }, {passive:true});
+  el.addEventListener('touchend', cancel, {passive:true}); el.addEventListener('touchcancel', cancel, {passive:true});
+})();
+function closePlace(){ if (pin){ map.removeLayer(pin); pin = null; } $('placeCard').hidden = true; $('app').classList.remove('pop-open'); if (placeOn && placeOn.getElement()) placeOn.getElement().classList.remove('pl-on'); placeOn = null; placeTok++; }
 $('placeClose').onclick = closePlace;
 function applyLayers(){
   [sat, relief].forEach(b => map.hasLayer(b) && map.removeLayer(b));
@@ -701,7 +744,7 @@ function onMove(){
   }, 300);
 }
 map.on('moveend', onMove);
-map.on('click', () => { closePlace(); $('layersPanel').hidden = true; if (!$('searchForm').hidden) openSearch(false); });
+map.on('click', () => { if (Date.now() - lastPinAt > 700) closePlace(); $('layersPanel').hidden = true; if (!$('searchForm').hidden) openSearch(false); });
 function setLoading(){ $('loadBar').hidden = cellsBusy.size === 0; }
 let refreshT = null; const refreshSoon = () => { clearTimeout(refreshT); refreshT = setTimeout(refresh, 250); };
 
@@ -789,7 +832,7 @@ function paintSpot(){
       <dt>Fishes best</dt><dd>${z.pref==='moving'?'Any moving tide':cap(z.pref)+' tide'}</dd>
       ${z.depth?`<dt>Depth</dt><dd>${esc(z.depth)}</dd>`:''}
       <dt>Structure</dt><dd>${esc(z.structure)}</dd>
-      <dt>GPS</dt><dd>${esc(z.gps || z.c[0].toFixed(5)+', '+z.c[1].toFixed(5))}</dd>
+      <dt>GPS</dt><dd>${coordBlock(z.c[0], z.c[1])}</dd>
       <dt>Tide station</dt><dd>${esc(stName || 'None nearby')}</dd>
       <dt>Species</dt><dd class="chips">${z.species.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</dd>
     </dl>
@@ -797,6 +840,7 @@ function paintSpot(){
     <div id="planOut">${plans[key]?planHtml(plans[key]):''}</div>`;
   $('closeSpot').onclick = () => selectZone(null);
   const gb = $('goBest'); if (gb) gb.onclick = () => setTime(b.i);
+  wireCoords($('body'));
   $('planBtn').onclick = () => { plans[key] = gamePlan(z, s, cur); const out = $('planOut'); out.innerHTML = planHtml(plans[key]); wireCopy();
     // reveal: the plan rises in and the panel scrolls so its top sits just under the button
     const body = $('body'), top = body.scrollTop + out.getBoundingClientRect().top - body.getBoundingClientRect().top - 64;
