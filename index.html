@@ -112,6 +112,12 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .pl-ramp{background:#1d6e8c;color:#fff;border:2px solid #fff}
 .pl-ic.sw-ic{width:18px;height:18px;border-width:1.5px;box-shadow:none}
 .pop-open .loadbar{display:none!important}
+.me-dot{position:relative}
+.me-dot b{position:absolute;inset:3px;border-radius:50%;background:#2f8cff;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5);box-sizing:border-box}
+.me-dot i{position:absolute;inset:0;border-radius:50%;background:#2f8cff;opacity:.45;animation:mepulse 2s ease-out infinite}
+@keyframes mepulse{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){.me-dot i{animation:none;opacity:0}}
+#locate.busy svg{animation:spin 1s linear infinite}
 #map{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .drop-pin{filter:drop-shadow(0 3px 4px rgba(0,0,0,.5))}
 .coords{display:grid;gap:6px}

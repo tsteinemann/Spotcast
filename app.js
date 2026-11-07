@@ -355,7 +355,7 @@ function placeTap(m, open){ let last = 0;
   m.on('add', () => { const el = m.getElement(); if (el && !el.__tap){ el.__tap = 1; let sx = 0, sy = 0, moved = false;
       el.addEventListener('touchstart', ev => { const t = ev.touches[0]; sx = t.clientX; sy = t.clientY; moved = false; }, {passive:true});
       el.addEventListener('touchmove', ev => { const t = ev.touches[0]; if (Math.hypot(t.clientX-sx, t.clientY-sy) > 10) moved = true; }, {passive:true});
-      el.addEventListener('touchend', ev => { if (moved) return; ev.preventDefault(); ev.stopPropagation(); go(); }, {passive:false}); } });
+      el.addEventListener('touchend', ev => { if (moved) return; ev.preventDefault(); go(); lastPinAt = Date.now(); }, {passive:false}); } });
 }
 function showPlace(html, m, tok, update){
   if (update && tok !== placeTok) return; // a newer card was opened meanwhile
@@ -989,12 +989,46 @@ async function go(text, magicKey){
   } catch(e){ toast('Search is unavailable right now. Check your connection and try again.'); }
 }
 map.on('dragstart', () => { placeName = null; });
+// ---- my location: blue dot + accuracy ring, kept up to date while the app is open
+const ME_ICON = L.divIcon({className:'me-dot', iconSize:[22,22], iconAnchor:[11,11], html:'<i></i><b></b>'});
+let me = null, meRing = null, meWatch = null, meLast = null;
+function showMe(p){
+  const {latitude:la, longitude:ln, accuracy:acc} = p.coords, ll = [la, ln]; meLast = p;
+  if (!me){
+    meRing = L.circle(ll, {radius:acc||30, pane:'places', color:'#2f8cff', weight:1, opacity:.5, fillColor:'#2f8cff', fillOpacity:.12, interactive:false}).addTo(map);
+    me = L.marker(ll, {icon:ME_ICON, pane:'places', zIndexOffset:1000, keyboard:false, title:'My location'}).addTo(map);
+    placeTap(me, tok => { const q = meLast.coords, la2 = q.latitude, ln2 = q.longitude;
+      showPlace(pcard('My location', `Accurate to about ${Math.max(1, Math.round((q.accuracy||0)*3.28084))} ft`, coordBlock(la2, ln2),
+        `<div class="pc-foot"><button type="button" class="pc-btn" id="meShare">Share</button></div>`), me, tok);
+      wireCoords($('placeBody'));
+      $('meShare').onclick = () => { const txt = `My location\n${fmtDec(la2,ln2)}\n${fmtDDM(la2,ln2)}\nhttps://maps.apple.com/?ll=${la2.toFixed(6)},${ln2.toFixed(6)}`;
+        if (navigator.share) navigator.share({title:'My location', text:txt}).catch(()=>{}); else copyText(txt, $('meShare')); }; });
+  } else { me.setLatLng(ll); meRing.setLatLng(ll).setRadius(acc||30); }
+}
+function watchMe(){
+  if (meWatch !== null || !navigator.geolocation) return;
+  meWatch = navigator.geolocation.watchPosition(showMe, () => {}, {enableHighAccuracy:true, maximumAge:5000, timeout:20000});
+}
+function stopMe(){ if (meWatch !== null){ navigator.geolocation.clearWatch(meWatch); meWatch = null; } }
+// save battery: stop following when the app is in the background, resume when it comes back
+document.addEventListener('visibilitychange', () => { if (!me) return; document.visibilityState === 'visible' ? watchMe() : stopMe(); });
 function locate(){
   if (!navigator.geolocation) return toast('Location is not available in this browser.');
-  navigator.geolocation.getCurrentPosition(p => { const {latitude:la, longitude:ln} = p.coords;
+  const go = p => { $('locate').classList.remove('busy'); const {latitude:la, longitude:ln} = p.coords; showMe(p); watchMe();
     if (la < FL.s-.3 || la > FL.n+.3 || ln < FL.w-.5 || ln > FL.e+.6) return toast('You are outside Florida. Search a Florida city instead.');
-    placeName = 'My location'; selectZone(null); map.setView([la, ln], 13); }, () => toast('Location permission was denied.'), {enableHighAccuracy:false, timeout:10000});
+    placeName = 'My location'; selectZone(null); map.setView([la, ln], Math.max(map.getZoom(), 14)); };
+  // a fix from the last minute is good enough to center on right away
+  if (meLast && Date.now() - meLast.timestamp < 60000) return go(meLast);
+  $('locate').classList.add('busy');
+  const fail = e => { $('locate').classList.remove('busy'); toast(e && e.code === 1 ? 'Location is off for Spotcast. Turn it on in Settings > Privacy > Location Services.' : 'Could not find your location. Try again.'); };
+  navigator.geolocation.getCurrentPosition(go, e => { if (e && e.code === 1) return fail(e);
+    // precise fix was slow; take a quicker rough one (the live dot sharpens it after)
+    navigator.geolocation.getCurrentPosition(go, fail, {enableHighAccuracy:false, timeout:10000, maximumAge:60000}); },
+    {enableHighAccuracy:true, timeout:8000, maximumAge:10000});
+  watchMe();
 }
+// if location was already allowed, show the dot from the start without asking
+try { navigator.permissions && navigator.permissions.query({name:'geolocation'}).then(r => { if (r.state === 'granted') watchMe(); }).catch(()=>{}); } catch(e){}
 $('locate').onclick = locate;
 
 // ---------------- full-screen height
