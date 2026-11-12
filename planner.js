@@ -47,7 +47,7 @@ function planDay(d, zones){
   const thunder = sfs.some(s => /thunder/i.test(s));
   // best spot each hour, after rain penalty
   const hourly = ix.map(i => { let best = null; for (const z of zones){ const s = score(z.k, i); if (!best || s.total > best.s.total) best = {z, s}; }
-    const w = COND.wx[i], adj = best ? best.s.total - rainPen(w[3]||0, w[4]) : 0; return {i, best, adj}; });
+    const w = COND.wx[i], adj = best ? best.s.total - Math.max(0, rainPen(w[3]||0, w[4]) - (best.s.wxPen||0)) : 0; return {i, best, adj}; });
   if (!hourly.length || !hourly.some(h => h.best)) return {d, known, empty:true};
   const pick = (exclude) => { let top = null; for (const h of hourly) if (h.best && !exclude(h.i) && (!top || h.adj > top.adj)) top = h; if (!top) return null;
     let a = top.i, b = top.i; const ok = i => { const h = hourly.find(x => x.i === i); return h && !exclude(i) && h.adj >= top.adj - 5; };

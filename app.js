@@ -276,8 +276,8 @@ function paintTypeChips(){
     ZONES.forEach(z => { if (z.type !== k) return; SHOW.has(k) ? zoneLayer.addLayer(z.layer) : zoneLayer.removeLayer(z.layer); });
     if (sel != null && !SHOW.has(ZONES[sel].type)) selectZone(null); paintTypeChips(); refresh(); });
 }
-const OVS = ['labels','contours','fuel','ramps','oyster','reefs','hardbottom'];
-const LS = Object.assign({base:'sat', labels:true, contours:false, fuel:true, ramps:true, oyster:false, reefs:true, hardbottom:false}, store.get('sz2-layers', {}));
+const OVS = ['labels','contours','fuel','ramps','oyster','reefs','hardbottom','bait','radar','winds','currents','wtemp'];
+const LS = Object.assign({base:'sat', labels:true, contours:false, fuel:true, ramps:true, oyster:false, reefs:true, hardbottom:false, bait:true, radar:false, winds:false, currents:false, wtemp:false}, store.get('sz2-layers', {}));
 const OV = {oyster:L.layerGroup(), reefs:L.layerGroup(), hardbottom:L.layerGroup()};
 // ---- places: public fuel docks (FWC marina inventory) and public boat ramps (FWC Boat Ramp Finder, via UF GeoPlan)
 map.createPane('places').style.zIndex = 460;
@@ -286,7 +286,8 @@ const blank = v => v == null || !String(v).trim() || /^(unknown|n\/?a|none|0)$/i
 const telLink = p => { const d = String(p||'').replace(/[^\d]/g,''); return d.length >= 10 ? `<a href="tel:${d.slice(-10)}">${esc(String(p).trim())}</a>` : ''; };
 const ICONS = {
   fuel:'<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M3 21h12"/><path d="M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/>',
-  ramp:'<path d="M3 17l18-7"/><path d="M7 13.5l2.2-4.3h6.5l1.6 2"/><circle cx="7" cy="19" r="1.6"/><path d="M2 21h20"/>'
+  ramp:'<path d="M3 17l18-7"/><path d="M7 13.5l2.2-4.3h6.5l1.6 2"/><circle cx="7" cy="19" r="1.6"/><path d="M2 21h20"/>',
+  bait:'<path d="M2 12c3-5 9-6 14-3l4-3v12l-4-3c-5 3-11 2-14-3z"/><circle cx="7.5" cy="11" r=".6"/>'
 };
 const placeIcon = k => L.divIcon({className:'pl-ic pl-'+k, iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-14],
   html:`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`});
@@ -428,20 +429,139 @@ map.on('contextmenu', e => dropPin(e.latlng));
 })();
 function closePlace(){ if (pin){ map.removeLayer(pin); pin = null; } $('placeCard').hidden = true; $('app').classList.remove('pop-open'); if (placeOn && placeOn.getElement()) placeOn.getElement().classList.remove('pl-on'); placeOn = null; placeTok++; }
 $('placeClose').onclick = closePlace;
+// ---------------- weather and water layers
+// NOAA nautical chart (ENC chart display service) as a third base map
+const chart = L.tileLayer.wms('https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/NOAAChartDisplay/MapServer/exts/MaritimeChartService/WMSServer',
+  {layers:'0,1,2,3,4,5,6,7', format:'image/png', transparent:false, version:'1.3.0', maxZoom:19, tileSize:512, zoomOffset:-1, attribution:'Chart: NOAA ENC'});
+// radar: NEXRAD base reflectivity from Iowa State Mesonet, the last 50 minutes in 5-minute frames, looped
+map.createPane('radar').style.zIndex = 420; map.getPane('radar').style.pointerEvents = 'none';
+const RADAR_STEPS = [50,45,40,35,30,25,20,15,10,5,0];
+const radar = {frames:[], group:L.layerGroup(), idx:RADAR_STEPS.length-1, timer:null, playing:true, built:0, refresh:null};
+function buildRadar(){
+  radar.group.clearLayers(); const bust = Math.floor(Date.now()/300e3);
+  radar.frames = RADAR_STEPS.map(m => L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${m?'-m'+String(m).padStart(2,'0')+'m':''}/{z}/{x}/{y}.png?_=${bust}`,
+    {pane:'radar', opacity:0, maxNativeZoom:11, maxZoom:19, attribution: m===0 ? 'Radar: NEXRAD via Iowa State Mesonet' : ''}));
+  radar.frames.forEach(f => radar.group.addLayer(f)); radar.built = Date.now(); showRadarFrame(radar.idx);
+}
+function showRadarFrame(k){
+  radar.idx = k; radar.frames.forEach((f,j) => f.setOpacity(j===k ? .6 : 0));
+  const base = Math.floor(Date.now()/300e3)*300e3, t = base - RADAR_STEPS[k]*60e3;
+  $('radarTime').textContent = `Radar · ${fmtTime(t)}${k===RADAR_STEPS.length-1?' · now':''}`;
+  $('radarTrack').innerHTML = RADAR_STEPS.map((_,j) => `<i class="${j===k?'on':''}"></i>`).join('');
+}
+function radarTick(){ if (!radar.playing) return; const last = RADAR_STEPS.length-1; const n = radar.idx >= last ? 0 : radar.idx+1;
+  showRadarFrame(n); clearTimeout(radar.timer); radar.timer = setTimeout(radarTick, n === last ? 1800 : 550); }
+function radarOn(on){
+  $('radarBar').hidden = !on; clearTimeout(radar.timer); clearInterval(radar.refresh);
+  if (!on){ map.removeLayer(radar.group); return; }
+  if (!radar.frames.length || Date.now() - radar.built > 5*60e3) buildRadar();
+  radar.group.addTo(map); radar.timer = setTimeout(radarTick, 900);
+  radar.refresh = setInterval(() => { buildRadar(); }, 5*60e3);
+}
+$('radarPlay').onclick = () => { radar.playing = !radar.playing; $('radarPlay').textContent = radar.playing ? '❚❚' : '▶'; $('radarPlay').setAttribute('aria-label', radar.playing ? 'Pause radar' : 'Play radar');
+  if (radar.playing) radarTick(); else clearTimeout(radar.timer); };
+$('radarTrack').onclick = e => { const r = $('radarTrack').getBoundingClientRect(), k = clamp(Math.floor((e.clientX-r.left)/r.width*RADAR_STEPS.length),0,RADAR_STEPS.length-1);
+  radar.playing = false; $('radarPlay').textContent = '▶'; clearTimeout(radar.timer); showRadarFrame(k); };
+
+// arrows for wind and tidal currents follow the hour on the timeline
+map.createPane('arrows').style.zIndex = 455; map.getPane('arrows').style.pointerEvents = 'none';
+const arrowIcon = (toDeg, len, color, text) => L.divIcon({className:'arrow-ic', iconSize:[0,0], iconAnchor:[0,0],
+  html:`<div style="transform:translate(-50%,-50%)"><svg width="${len+8}" height="${len+8}" viewBox="-${(len+8)/2} -${(len+8)/2} ${len+8} ${len+8}" style="transform:rotate(${toDeg}deg)"><path d="M0 ${len/2} L0 -${len/2-5}" stroke="#000" stroke-opacity=".55" stroke-width="5" stroke-linecap="round"/><path d="M0 ${len/2} L0 -${len/2-5}" stroke="${color}" stroke-width="3" stroke-linecap="round"/><path d="M-5 -${len/2-6} L0 -${len/2} L5 -${len/2-6}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${text}</span></div>`});
+// wind: a small grid of Open-Meteo points over the view, every hour for the week
+const winds = {layer:L.layerGroup([], {pane:'arrows'}), pts:[], area:null, busy:false};
+async function loadWinds(){
+  if (!map._loaded) return;
+  const b = map.getBounds(), key = [b.getSouth(),b.getWest(),b.getNorth(),b.getEast()].map(v=>v.toFixed(2)).join(',');
+  if (winds.busy || (winds.area && winds.area.contains(b) && winds.z >= map.getZoom()-1.5)) { paintWinds(); return; }
+  winds.busy = true; const pb = b.pad(.15), N = 4, M = 5, la = [], ln = [];
+  for (let r=0;r<N;r++) for (let c=0;c<M;c++){ la.push((pb.getSouth()+(r+.5)*(pb.getNorth()-pb.getSouth())/N).toFixed(3)); ln.push((pb.getWest()+(c+.5)*(pb.getEast()-pb.getWest())/M).toFixed(3)); }
+  try { let j = await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${la.join(',')}&longitude=${ln.join(',')}&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph&timezone=GMT&forecast_days=8`);
+    if (!Array.isArray(j)) j = [j];
+    winds.pts = j.map((p,k) => { const m = new Map(); p.hourly.time.forEach((t,q) => m.set(Date.parse(t+':00Z'), q)); return {ll:[+la[k], +ln[k]], m, ws:p.hourly.wind_speed_10m, wd:p.hourly.wind_direction_10m}; });
+    winds.area = pb; winds.z = map.getZoom(); void key;
+  } catch(e){ toast('Wind arrows are not available right now.'); }
+  winds.busy = false; paintWinds();
+}
+function paintWinds(){
+  winds.layer.clearLayers(); if (!LS.winds || !HRS.length) return; const t = Math.round(HRS[cur].t/3600e3)*3600e3;
+  winds.pts.forEach(p => { const q = p.m.get(t); if (q == null) return; const sp = Math.round(p.ws[q]), from = p.wd[q];
+    const col = sp >= 18 ? '#ff5466' : sp >= 12 ? '#ffb547' : '#e9f3f1';
+    winds.layer.addLayer(L.marker(p.ll, {pane:'arrows', interactive:false, keyboard:false, icon:arrowIcon(from+180, 20+Math.min(sp,25), col, `${sp} mph`)})); });
+}
+// tidal currents: NOAA current stations in view, using the same predictions the spot scores use
+const currents = {layer:L.layerGroup([], {pane:'arrows'})};
+function paintCurrents(){
+  currents.layer.clearLayers(); if (!LS.currents || !map._loaded || map.getZoom() < 10 || !HRS.length) return;
+  const b = map.getBounds(), c = map.getCenter(), inView = (STATIONS.cur||[]).filter(s => b.contains([s[1],s[2]]))
+    .sort((a,d) => distKm([c.lat,c.lng],[a[1],a[2]]) - distKm([c.lat,c.lng],[d[1],d[2]])).slice(0, 30);
+  inView.forEach(s => { ensureCur(s); const C = CURS.get(s[0]), v = curV(s[0]); if (!C || !v || v[cur] == null) return; const kt = v[cur], a = Math.abs(kt);
+    const icon = a < .2 ? L.divIcon({className:'wt-ic', iconSize:[0,0], html:`<div>Slack</div>`}) : arrowIcon(kt >= 0 ? C.flood : C.ebb, 16 + Math.min(a,3)*10, a >= 1.5 ? '#ff8a3d' : '#62d8c7', `${a.toFixed(1)} kt`);
+    currents.layer.addLayer(L.marker([s[1],s[2]], {pane:'arrows', interactive:false, keyboard:false, icon})); });
+}
+// water temperature at NOAA stations in view (latest reading)
+const wtemps = {layer:L.layerGroup([], {pane:'arrows'}), got:new Map()};
+function paintWtemp(){
+  wtemps.layer.clearLayers(); if (!LS.wtemp || !map._loaded) return; const b = map.getBounds().pad(.2);
+  (STATIONS.wt||[]).filter(s => b.contains([s[1],s[2]])).forEach(s => {
+    const g = wtemps.got.get(s[0]);
+    if (!g || (g.t && Date.now()-g.t > 30*60e3)){ if (!g || !g.busy){ wtemps.got.set(s[0], {busy:true});
+      getJSON(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&station=${s[0]}&date=latest&units=english&time_zone=gmt&format=json&application=spotcast`)
+        .then(j => { wtemps.got.set(s[0], {t:Date.now(), v: j.data ? +j.data[0].v : null}); paintWtemp(); }).catch(() => wtemps.got.set(s[0], {t:Date.now(), v:null})); } return; }
+    if (g.v == null) return;
+    wtemps.layer.addLayer(L.marker([s[1],s[2]], {pane:'arrows', interactive:false, keyboard:false, icon:L.divIcon({className:'wt-ic', iconSize:[0,0], html:`<div>${Math.round(g.v)}°F</div>`})})); });
+}
+// bait and tackle shops from OpenStreetMap, loaded in half-degree cells as you pan
+const BAIT = {layer:L.layerGroup(), cells:new Set(), busy:new Set(), ids:new Set()};
+async function loadBait(){
+  if (!LS.bait || !map._loaded || map.getZoom() < 10) return; const b = map.getBounds(), keys = [];
+  for (let la = Math.floor(b.getSouth()*2)/2; la < b.getNorth(); la += .5) for (let ln = Math.floor(b.getWest()*2)/2; ln < b.getEast(); ln += .5) keys.push([la, ln]);
+  for (const [la, ln] of keys){ const key = la+','+ln; if (BAIT.cells.has(key) || BAIT.busy.has(key)) continue; BAIT.busy.add(key);
+    const bb = `${la},${ln},${la+.5},${ln+.5}`, q = `[out:json][timeout:20];(nwr["shop"="fishing"](${bb});nwr["shop"~"bait|outdoor|sports"]["name"~"bait|tackle",i](${bb});nwr["name"~"bait (and|&) tackle|bait shop",i](${bb}););out tags center;`;
+    let ok = false;
+    for (const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+      try { const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
+        const r = await fetch(host, {method:'POST', body:'data='+encodeURIComponent(q), headers:{'Content-Type':'application/x-www-form-urlencoded'}, signal:ctl.signal}); clearTimeout(t);
+        if (!r.ok) continue; const j = await r.json(); ok = true;
+        for (const e of (j.elements||[])){ const id = e.type+e.id; if (BAIT.ids.has(id)) continue; BAIT.ids.add(id);
+          const g = e.tags||{}, p = e.center || {lat:e.lat, lon:e.lon}; if (!p || p.lat == null) continue;
+          const m = L.marker([p.lat, p.lon], {pane:'places', icon:placeIcon('bait'), title:g.name||'Bait and tackle', keyboard:false});
+          placeTap(m, tok => showPlace(baitCard(g, p.lat, p.lon), m, tok)); BAIT.layer.addLayer(m); }
+        break;
+      } catch(e){}
+    }
+    BAIT.busy.delete(key); if (ok) BAIT.cells.add(key); else { if (!BAIT.warned){ BAIT.warned = true; toast('Could not load bait shops right now.'); } break; }
+  }
+}
+function baitCard(g, la, ln){
+  const ref = sel != null ? ZONES[sel] : null, from = ref ? ref.c : (() => { const c = map.getCenter(); return [c.lat, c.lng]; })();
+  const mi = distKm(from, [la, ln]) * 0.621371, web = g.website || g['contact:website'], phone = g.phone || g['contact:phone'];
+  const addr = [g['addr:housenumber'], g['addr:street']].filter(Boolean).join(' ') + (g['addr:city'] ? ', '+g['addr:city'] : '');
+  const live = /live\s*bait|shrimp/i.test([g.description, g['shop:bait'], g.bait, g.name].filter(Boolean).join(' ')) || g.bait === 'live';
+  return pcard(g.name || 'Bait and tackle', `Bait and tackle${live ? ' · <span class="pc-tag">Live bait</span>' : ''}`,
+    prow('Distance', `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi ${ref ? 'from '+esc(ref.name) : 'from map center'}`) + prow('Hours', g.opening_hours ? prettyHours(g.opening_hours) : '<i>Not listed</i>') + prow('Phone', telLink(phone)) + prow('Address', addr.trim().replace(/^,\s*/,'') ? esc(addr.replace(/^,\s*/,'')) : ''),
+    `<div class="pc-foot">${dirLink(la,ln)}${web ? ` <a class="pc-btn ghost" href="${esc(/^https?:/.test(web)?web:'https://'+web)}" target="_blank" rel="noopener">Website</a>` : ''}</div><div class="pc-note">From OpenStreetMap. Call ahead to check what live bait they have.</div>`);
+}
+OV.bait = BAIT.layer; OV.winds = winds.layer; OV.currents = currents.layer; OV.wtemp = wtemps.layer;
+function paintTimeLayers(){ paintWinds(); paintCurrents(); }
+map.on('moveend', () => { if (LS.winds) loadWinds(); if (LS.currents) paintCurrents(); if (LS.wtemp) paintWtemp(); if (LS.bait) loadBait(); });
 function applyLayers(){
-  [sat, relief].forEach(b => map.hasLayer(b) && map.removeLayer(b));
-  (LS.base==='relief' ? relief : sat).addTo(map);
+  [sat, relief, chart].forEach(b => map.hasLayer(b) && map.removeLayer(b));
+  (LS.base==='relief' ? relief : LS.base==='chart' ? chart : sat).addTo(map);
   document.querySelectorAll('[data-base]').forEach(b => b.setAttribute('aria-pressed', b.dataset.base===LS.base));
   $('depthKey').hidden = !(LS.base==='relief' || LS.contours);
   OVS.forEach(k => $('ov-'+k).checked = !!LS[k]);
-  LS.labels ? labels.addTo(map) : map.removeLayer(labels);
+  LS.labels && LS.base !== 'chart' ? labels.addTo(map) : map.removeLayer(labels);
   if (LS.contours){ if (map.hasLayer(contours)) contours.redraw(); else contours.addTo(map); } else map.removeLayer(contours);
-  ['oyster','reefs','hardbottom','fuel','ramps'].forEach(k => LS[k] ? OV[k].addTo(map) : map.removeLayer(OV[k]));
-  if (LS.fuel) setTimeout(loadFuel); if (LS.ramps) setTimeout(loadRamps);
+  ['oyster','reefs','hardbottom','fuel','ramps','bait','winds','currents','wtemp'].forEach(k => LS[k] ? OV[k].addTo(map) : map.removeLayer(OV[k]));
+  if (LS.fuel) setTimeout(loadFuel); if (LS.ramps) setTimeout(loadRamps); if (LS.bait) setTimeout(loadBait);
+  if (LS.winds) setTimeout(loadWinds); else winds.layer.clearLayers();
+  paintCurrents(); paintWtemp(); radarOn(!!LS.radar);
   store.set('sz2-layers', LS);
 }
 document.querySelectorAll('[data-base]').forEach(b => b.onclick = () => { LS.base = b.dataset.base; applyLayers(); });
-OVS.forEach(k => $('ov-'+k).onchange = e => { LS[k] = e.target.checked; applyLayers(); });
+OVS.forEach(k => $('ov-'+k).onchange = e => { LS[k] = e.target.checked;
+  if (e.target.checked && k === 'winds') LS.currents = false; if (e.target.checked && k === 'currents') LS.winds = false; // one set of arrows at a time
+  applyLayers(); });
 paintTypeChips();
 $('layersBtn').onclick = () => { const p=$('layersPanel'); p.hidden = !p.hidden; $('layersBtn').setAttribute('aria-expanded', !p.hidden); if (!p.hidden && typeof openSearch === 'function') openSearch(false); };
 $('zin').onclick = () => map.zoomIn(); $('zout').onclick = () => map.zoomOut();
@@ -636,7 +756,9 @@ async function loadCell(key){
   hb1.concat(hb2).flatMap(f => ringsOf(f.geometry)).forEach(r => OV.hardbottom.addLayer(L.polygon(r, {pane:'habitat', color:'#d9b3ff', weight:.8, fillColor:'#c48cff', fillOpacity:.38, interactive:false})));
   // register
   cellsBusy.delete(key); cellsDone.add(key);
-  add.forEach(z => { z.k = ZONES.length; ZONES.push(z); z.st = nearestStation(z.c); drawZone(z); if (z.st) ensureTide(z.st); });
+  add.forEach(z => { z.k = ZONES.length; ZONES.push(z); z.st = nearestStation(z.c); drawZone(z); if (z.st) ensureTide(z.st);
+    // passes, bridges and drop-offs near a NOAA current station score on the predicted current itself
+    if (/^(pass|bridge|dropoff)$/.test(z.type)){ const cs = nearestCur(z.c, 3); if (cs){ z.cs = cs[0]; ensureCur(cs); } } });
   setLoading(); refresh();
 }
 function nearestStation(c){ let best=null, bd=1e9; for (const s of STATIONS.tide){ const d = distKm(c,[s[1],s[2]]); if (d < bd){ bd=d; best=s; } } return best && bd < 50 ? best[0] : null; }
@@ -700,7 +822,9 @@ async function loadConditions(c){
   });
   // water temperature
   let wt = null, bd = 1e9; for (const s of STATIONS.wt){ const d = distKm(c,[s[1],s[2]]); if (d < bd){ bd=d; wt=s; } }
-  if (wt && bd < 80){ try { const j = await getJSON(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&station=${wt[0]}&date=latest&units=english&time_zone=gmt&format=json&application=spotcast`); if (j.data) base.waterTemp = +j.data[0].v; } catch(e){} }
+  const exP = loadExtras(c);
+  if (wt && bd < 80){ try { const j = await getJSON(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_temperature&station=${wt[0]}&date=latest&units=english&time_zone=gmt&format=json&application=spotcast`); if (j.data){ base.waterTemp = +j.data[0].v; base.wtName = wt[3]; } } catch(e){} }
+  base.ex = await exP;
   if (seq !== condSeq) return;
   COND = base; SCORE.clear();
   const now = (Date.now()-T0)/3600e3; if (!condReady){ cur = clamp(Math.ceil(now),0,H-1); condReady = true; } else cur = clamp(cur,0,H-1);
@@ -708,35 +832,147 @@ async function loadConditions(c){
 }
 let condReady = false;
 
+// ---- extra conditions per hour: pressure and its 3-hour trend, cloud, visibility (Open-Meteo forecast),
+// and waves, swell, surface current and sea temperature (Open-Meteo marine). Best effort: any of it may be missing.
+async function loadExtras(c){
+  const ll = `latitude=${c[0].toFixed(3)}&longitude=${c[1].toFixed(3)}`;
+  const idx = j => { const m = new Map(); (j && j.hourly ? j.hourly.time : []).forEach((t,k) => m.set(Date.parse(t+':00Z'), k)); return m; };
+  const [fc, mr] = await Promise.all([
+    getJSON(`https://api.open-meteo.com/v1/forecast?${ll}&hourly=pressure_msl,cloud_cover,visibility&timezone=GMT&past_days=1&forecast_days=8`).catch(() => null),
+    getJSON(`https://marine-api.open-meteo.com/v1/marine?${ll}&hourly=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&length_unit=imperial&timezone=GMT&forecast_days=8&cell_selection=sea`).catch(() => null)]);
+  const fi = idx(fc), mi = idx(mr), num = v => v == null || isNaN(v) ? null : +v;
+  const at = (j, m, key, t) => { if (!j) return null; const k = m.get(Math.round(t/3600e3)*3600e3); return k == null ? null : num(j.hourly[key][k]); };
+  return HRS.map(({t}) => {
+    const p = at(fc,fi,'pressure_msl',t), p3 = at(fc,fi,'pressure_msl',t-3*3600e3), vis = at(fc,fi,'visibility',t), cv = at(mr,mi,'ocean_current_velocity',t), sst = at(mr,mi,'sea_surface_temperature',t);
+    return {p, dp3: p != null && p3 != null ? p - p3 : null, cloud: at(fc,fi,'cloud_cover',t), vis: vis == null ? null : vis/1609.34,
+      wh: at(mr,mi,'wave_height',t), wp: at(mr,mi,'wave_period',t), wdir: at(mr,mi,'wave_direction',t),
+      sh: at(mr,mi,'swell_wave_height',t), sp: at(mr,mi,'swell_wave_period',t), sdir: at(mr,mi,'swell_wave_direction',t),
+      cv: cv == null ? null : cv/1.852, cd: at(mr,mi,'ocean_current_direction',t), sst: sst == null ? null : sst*9/5+32};
+  });
+}
+const exAt = i => (COND && COND.ex && COND.ex[i]) || {};
+const waterTempAt = i => COND.waterTemp ?? exAt(i).sst ?? null;
+
+// ---- tidal currents: NOAA current predictions (peak flood, peak ebb, slack), smoothed to every hour; flood is positive
+const CURS = new Map();
+function nearestCur(c, maxKm){ let best=null, bd=1e9; for (const s of (STATIONS.cur||[])){ const d = distKm(c,[s[1],s[2]]); if (d < bd){ bd=d; best=s; } } return best && bd <= maxKm ? best : null; }
+function ensureCur(s){
+  if (CURS.has(s[0])) return; CURS.set(s[0], {loading:true, name:s[3]});
+  getJSON(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=currents_predictions&station=${s[0]}&bin=${s[4]||1}&begin_date=${ymd(Date.now()-86400e3)}&range=216&interval=MAX_SLACK&units=english&time_zone=gmt&format=json&application=spotcast`)
+    .then(j => { const cp = j.current_predictions && j.current_predictions.cp; if (!cp || !cp.length) throw 0;
+      CURS.set(s[0], {name:s[3], flood:cp[0].meanFloodDir, ebb:cp[0].meanEbbDir, ev:cp.map(p => ({t:Date.parse(p.Time.replace(' ','T')+':00Z'), v:+p.Velocity_Major}))});
+      SCORE.clear(); refreshSoon(); })
+    .catch(() => CURS.set(s[0], {name:s[3], failed:true}));
+}
+function curV(id){
+  const C = CURS.get(id); if (!C || !C.ev) return null;
+  if (C.hT0 !== T0){ const ev = C.ev; C.h = HRS.map(({t}) => { for (let k=0;k<ev.length-1;k++){ const a=ev[k], b=ev[k+1]; if (t>=a.t && t<=b.t){ const f=(t-a.t)/(b.t-a.t); return a.v+(b.v-a.v)*(1-Math.cos(Math.PI*f))/2; } } return null; }); C.hT0 = T0; }
+  return C.h;
+}
+// ---- tide swing: the rise or fall of the tide you're fishing, against the station's average swing
+function tideSwing(id, i){
+  const T = TIDES.get(id); if (!T || !T.ev || T.ev.length < 3) return null;
+  const ev = T.ev, t = T0 + i*3600e3;
+  if (T.avg == null){ let s = 0; for (let k=1;k<ev.length;k++) s += Math.abs(ev[k].v-ev[k-1].v); T.avg = s/(ev.length-1); }
+  for (let k=0;k<ev.length-1;k++) if (t >= ev[k].t && t <= ev[k+1].t){ const sw = Math.abs(ev[k+1].v-ev[k].v); return {sw, ratio: T.avg > 0 ? sw/T.avg : 1}; }
+  return null;
+}
+function tideTurns(id, d){ // highs and lows on day d
+  const T = TIDES.get(id); if (!T || !T.ev) return [];
+  const a = T0 + DAYS[d].idx[0]*3600e3, b = a + DAYS[d].idx.length*3600e3, ev = T.ev, out = [];
+  for (let k=1;k<ev.length-1;k++) if (ev[k].t >= a && ev[k].t < b) out.push({t:ev[k].t, v:ev[k].v, hi: ev[k].v > ev[k-1].v});
+  return out;
+}
+
 // ---------------- scoring
+// Four core factors make the base (tide 35, wind 25, moon 20, light 20 = 100), then small extras add or take
+// points: spot type, pressure trend, water temperature for the main species, seas, sky and storms.
+const FACTORS = [['tide','Tide',35,'#5aa9ff'],['wind','Wind',25,'#ff8a3d'],['moon','Moon',20,'#c48cff'],['light','Light',20,'#ffd23d']];
+const SP_TEMP = { // ideal water temperature band, °F, and where the bite shuts down
+  'Snook':[70,84,60], 'Redfish':[66,82,52], 'Speckled trout':[60,76,50], 'Flounder':[58,74,48], 'Sheepshead':[55,72,48], 'Black drum':[58,76,48],
+  'Mangrove snapper':[72,86,62], 'Spanish mackerel':[70,84,64], 'Gag grouper':[62,78,54], 'Black sea bass':[54,70,46]
+};
+const SPOT_BONUS = {pass:'Passes funnel bait and fish through one place.', dropoff:'Edges hold fish on most tides.', bridge:'Bridges hold fish in almost any condition.',
+  flat:'Mapped flat with room to find fish.', mangrove:'Mangrove edges hold fish most of the year.', oyster:'Shell bars hold bait and fish.', reef:'Structure holds fish year round.', dock:'Docks hold fish but see a lot of pressure.'};
 function score(k, i){
   const key = k*1000+i; if (SCORE.has(key)) return SCORE.get(key);
-  const z = ZONES[k], hr = COND.hour[i];
-  let tide = 14, tideWhy = [-1,'No tide prediction nearby yet, so this rating leans on wind, moon and light.'], r = 0, v = null;
-  const h = z.st ? tideH(z.st) : null;
+  const z = ZONES[k], hr = COND.hour[i], ex = exAt(i);
+  // ---- tide (35)
+  let tide = 14, tideWhy = [-1,'No tide prediction nearby yet, so this rating leans on wind, moon and light.'], r = 0, v = null, cur = null, swing = null;
+  const h = z.st ? tideH(z.st) : null, cv = z.cs ? curV(z.cs) : null;
   if (h){
     v = h[i]; r = (h[Math.min(i+1,H-1)] - h[Math.max(i-1,0)])/2;
-    const mag = Math.abs(r), dir = r>0?'incoming':'outgoing', s = Math.min(1, mag/0.22);
-    if (mag < 0.04){ tide = 6; tideWhy = [-1,'Slack tide. Expect a slow bite until the water starts moving.']; }
-    else if (z.pref==='moving'){ tide = 8+21*s; tideWhy = [s>.55?2:1, `Tide ${s>.55?'moving well':'starting to move'}, pushing bait past the structure.`]; }
-    else if (dir===z.pref){ tide = 12+23*s; tideWhy = [s>.55?2:1, `${cap(dir)} tide ${s>.55?'running well':'starting to move'}. ${z.label} fish best on the ${z.pref}.`]; }
-    else { tide = 6+4*s; tideWhy = [-1, `Tide is ${dir==='incoming'?'coming in':'going out'}. ${z.label} fish best on the ${z.pref}.`]; }
+    let mag = Math.abs(r), dir = r>0?'incoming':'outgoing', s = Math.min(1, mag/0.22), slack = mag < 0.04;
+    if (cv && cv[i] != null){ // a nearby current station beats the tide-height slope for moving water
+      const kt = cv[i], C = CURS.get(z.cs); cur = {kt, name:C.name, dir: kt >= 0 ? 'flood' : 'ebb'};
+      s = Math.min(1, Math.abs(kt)/1.2); slack = Math.abs(kt) < 0.25; dir = kt >= 0 ? 'incoming' : 'outgoing';
+    }
+    const curTxt = cur ? ` ${Math.abs(cur.kt).toFixed(1)} kt ${cur.dir} at ${cur.name}.` : '';
+    if (slack){ tide = 6; tideWhy = [-1,`Slack ${cur?'current':'tide'}. Expect a slow bite until the water starts moving.`]; }
+    else if (z.pref==='moving'){ tide = 8+21*s; tideWhy = [s>.55?2:1, `${cur?'Current':'Tide'} ${s>.55?'moving well':'starting to move'}, pushing bait past the structure.${curTxt}`]; }
+    else if (dir===z.pref){ tide = 12+23*s; tideWhy = [s>.55?2:1, `${cap(dir)} ${cur?'current':'tide'} ${s>.55?'running well':'starting to move'}. ${z.label} fish best on the ${z.pref}.${curTxt}`]; }
+    else { tide = 6+4*s; tideWhy = [-1, `${cur?'Current':'Tide'} is ${dir==='incoming'?'coming in':'going out'}. ${z.label} fish best on the ${z.pref}.${curTxt}`]; }
+    swing = tideSwing(z.st, i);
+    if (swing && !slack){
+      tide = Math.min(35, tide * clamp(0.7 + 0.3*swing.ratio, 0.75, 1.12));
+      if (swing.ratio < 0.75) tideWhy = [tideWhy[0] > 0 ? 1 : tideWhy[0], tideWhy[1] + ` Only ${swing.sw.toFixed(1)} ft of swing, so less push than usual.`];
+      else if (swing.ratio > 1.25) tideWhy = [tideWhy[0], tideWhy[1] + ` Big ${swing.sw.toFixed(1)} ft swing, so the water really moves.`];
+    }
   }
+  // ---- wind (25)
   const [ws, wd] = COND.wx[i];
   let wind, windWhy;
   if (z.wind==='shel'){ wind = ws>14 ? 25 : 21; windWhy = [ws>14?1:0, `Protected water, so the ${ws} mph ${card(wd)} wind matters less.`]; }
   else if (z.wind==='reef'){ const pen = clamp((ws-8)/10,0,1); wind = 25*(1-pen); windWhy = pen>.6 ? [-2, `${ws} mph ${card(wd)} wind. Rough for running offshore.`] : pen>.25 ? [-1, `${ws} mph ${card(wd)} wind. Expect a bumpy ride out.`] : [1, `Light ${card(wd)} wind. Good conditions to run out and anchor.`]; }
-  else if (z.wind==='flat'){ const pen = clamp((ws-10)/10,0,1)*0.7; wind = 25*(1-pen); windWhy = pen>.35 ? [-1, `${ws} mph ${card(wd)} wind will muddy a shallow flat. Work the lee side.`] : [1, `A ${ws} mph ${card(wd)} breeze is workable on the flat.`]; }
+  else if (z.wind==='flat'){ const pen = clamp((ws-10)/10,0,1)*0.7, calm = ws <= 2 ? 0.25 : 0; wind = 25*(1-pen-calm);
+    windWhy = pen>.35 ? [-1, `${ws} mph ${card(wd)} wind will muddy a shallow flat. Work the lee side.`] : calm ? [-1, 'Slick calm. Easy to spot fish, harder to fool them. Use long casts and light lures.'] : [1, `A ${ws} mph ${card(wd)} breeze is workable on the flat.`]; }
   else { const pen = clamp((ws-12)/12,0,1)*0.6; wind = 25*(1-pen); windWhy = pen>.3 ? [-1, `${ws} mph ${card(wd)} wind. Fish the protected side.`] : [1, `The ${ws} mph ${card(wd)} wind stays fishable here.`]; }
+  // ---- moon (20)
   let solWhy = null;
   if (hr.sol >= 10) solWhy = hr.major ? [2, `Major feeding window: moon ${hr.mjUp?'overhead':'underfoot'} at ${hourLabel(hr.mjAt)}.`] : [1, `Minor feeding window: moon on the horizon at ${hourLabel(hr.mnAt)}.`];
+  const moonTxt = solWhy ? solWhy[1] : `No feeding window this hour. Next ${Math.abs(hr.mjAt-i) < Math.abs(hr.mnAt-i) ? 'major' : 'minor'} around ${hourLabel(Math.abs(hr.mjAt-i) < Math.abs(hr.mnAt-i) ? hr.mjAt : hr.mnAt)}.`;
+  // ---- light (20)
   let light, lightWhy = null;
   if (hr.dS <= 1.5){ light = 20; lightWhy = [2, `Low light around ${hr.srNear?'sunrise':'sunset'} (${hourLabel(hr.srNear?hr.sr:hr.ss)}).`]; }
   else if (hr.alt < -6){ light = z.deep ? 15 : 9; lightWhy = (z.type==='bridge'||z.type==='dock') ? [2,'Night bite. Fish the shadow line under the lights.'] : z.type==='pass' ? [1,'Night bite. Fish current lines in the pass.'] : z.type==='reef' ? [-1,'Dark offshore. Run out only if you know the water.'] : [-1,'Dark on shallow water. Hard to read and fish.']; if (z.type==='bridge'||z.type==='dock') light = 14; }
   else { light = z.deep ? 12 : 7; if (z.type==='dock'||z.type==='bridge') { light = 10; lightWhy = [1,'Bright sun pushes fish into the shade under the structure.']; } else if (!z.deep) lightWhy = [-1,'High sun on shallow water. Fish push to edges and shade.']; }
-  const total = Math.min(100, Math.round(tide + wind + hr.sol + light + (z.base||0)));
-  const why = [tideWhy, windWhy, solWhy, lightWhy].filter(Boolean).filter(w => w[0]!==0).sort((a,b) => Math.abs(b[0])-Math.abs(a[0]) || b[0]-a[0]);
-  const out = {total, tier:tierOf(total), why, tide:{v, r, dir: r>0?'incoming':'outgoing'}, ws, wd};
+  const f = [
+    {k:'tide', val:tide, why: tideWhy[1]},
+    {k:'wind', val:wind, why: windWhy[1]},
+    {k:'moon', val:hr.sol, why: moonTxt},
+    {k:'light', val:light, why: lightWhy ? lightWhy[1] : 'Mid-day light on deeper water. Fish hold near bottom and structure.'}
+  ].map(x => Object.assign(x, {label: FACTORS.find(F => F[0]===x.k)[1], max: FACTORS.find(F => F[0]===x.k)[2], color: FACTORS.find(F => F[0]===x.k)[3]}));
+  const base = f.reduce((a,x) => a + x.val, 0);
+  // ---- extras
+  const extras = [];
+  if (z.base) extras.push({k:'spot', label:'Spot', pts:z.base, why: SPOT_BONUS[z.type] || ''});
+  if (ex.dp3 != null){ const d = ex.dp3; // hPa over 3 hours
+    const e = d <= -2 ? [1, `Pressure dropping fast (${(d*0.02953).toFixed(2)} inHg in 3 hours). Fish feed hard, but weather may follow.`]
+      : d <= -0.5 ? [3, 'Pressure easing down. Fish tend to feed best ahead of a change.']
+      : d >= 1.5 ? [-4, 'Pressure climbing fast behind a front. Fish often go tight-lipped.']
+      : d >= 0.5 ? [1, 'Pressure rising slowly. Steady, normal bite.']
+      : [0, 'Pressure steady.'];
+    extras.push({k:'pressure', label:'Pressure', pts:e[0] - (ex.p > 1024 && e[0] >= 0 ? 1 : 0), why: e[1] + (ex.p ? ` ${(ex.p*0.02953).toFixed(2)} inHg.` : '')}); }
+  const wt = waterTempAt(i), sp = (z.species||[]).find(n => SP_TEMP[n]);
+  if (wt != null && sp){ const [lo, hi, off] = SP_TEMP[sp], t = Math.round(wt);
+    const e = t >= lo && t <= hi ? [2, `${t}°F water is ideal for ${sp.toLowerCase()}.`] : t < off ? [-5, `${t}°F water is cold for ${sp.toLowerCase()}. Fish deep, slow and in the afternoon.`]
+      : t < lo ? [-2, `${t}°F water is on the cool side for ${sp.toLowerCase()}. Warmest part of the day is best.`] : t > hi + 4 ? [-3, `${t}°F water is hot. Fish deeper water and low light.`] : [-1, `${t}°F water is a little warm for ${sp.toLowerCase()}.`];
+    extras.push({k:'water', label:'Water', pts:e[0], why:e[1]}); }
+  if (ex.wh != null && /^(pass|reef|bridge)$/.test(z.type)){ const w = ex.wh;
+    const e = z.type==='reef' ? (w < 1.5 ? [1, `${w.toFixed(1)} ft seas. Easy run and easy to hold over the reef.`] : w < 3 ? [0, `${w.toFixed(1)} ft seas. Manageable.`] : [-4, `${w.toFixed(1)} ft seas. Rough offshore.`])
+      : (w < 2 ? [0, `${w.toFixed(1)} ft seas and calm in the pass.`] : w < 4 ? [0, `${w.toFixed(1)} ft seas.`] : [-3, `${w.toFixed(1)} ft seas stacking up in the pass. Use caution.`]);
+    extras.push({k:'seas', label:'Seas', pts:e[0], why:e[1]}); }
+  if (ex.cloud != null && !hr.night && !z.deep){
+    if (ex.cloud >= 70) extras.push({k:'sky', label:'Sky', pts:1, why:'Overcast. Low light keeps fish shallow and less spooky.'});
+    else if (ex.cloud <= 15 && hr.alt > 35) extras.push({k:'sky', label:'Sky', pts:-1, why:'Bluebird sky on shallow water. Fish spook easily.'}); }
+  const sf = COND.wx[i][4] || '', pop = COND.wx[i][3] || 0; let wxPen = 0;
+  if (/thunder/i.test(sf)){ wxPen = 8; extras.push({k:'storm', label:'Storms', pts:-8, why:'Thunderstorms in the forecast. Get off the water if you hear thunder.'}); }
+  else if (pop >= 70){ wxPen = 3; extras.push({k:'storm', label:'Rain', pts:-3, why:`${pop}% chance of rain this hour.`}); }
+  const extra = extras.reduce((a,x) => a + x.pts, 0);
+  const total = clamp(Math.round(base + extra), 0, 100);
+  const exWhy = extras.filter(x => x.pts !== 0 && x.k !== 'spot').map(x => [Math.sign(x.pts) * (Math.abs(x.pts) >= 3 ? 2 : 1), x.why]);
+  const why = [tideWhy, windWhy, solWhy, lightWhy, ...exWhy].filter(Boolean).filter(w => w[0]!==0).sort((a,b) => Math.abs(b[0])-Math.abs(a[0]) || b[0]-a[0]);
+  const out = {total, tier:tierOf(total), why, f, extras, base:Math.round(base), extra, storm: wxPen >= 8, wxPen, tide:{v, r, dir: r>0?'incoming':'outgoing', cur, swing}, ws, wd};
   SCORE.set(key, out); return out;
 }
 function visibleZones(){
@@ -830,6 +1066,25 @@ function toggleDock(want){ const isOpen = !$('dock').classList.contains('collaps
   head.addEventListener('click', () => { if (Date.now() - dragged < 400) return; if (sel != null) selectZone(null); else toggleDock($('dock').classList.contains('collapsed')); }); head.addEventListener('pointercancel', () => { y0 = null; dock.style.transform = ''; });
 })();
 setDock(dockOpen);
+// ---- marine conditions for the area at the selected hour
+const MOON_NAMES = [[.03,'New moon'],[.22,'Waxing crescent'],[.28,'First quarter'],[.47,'Waxing gibbous'],[.53,'Full moon'],[.72,'Waning gibbous'],[.78,'Last quarter'],[.97,'Waning crescent'],[1.01,'New moon']];
+function moonName(t){ const ph = SunCalc.getMoonIllumination(new Date(t)).phase; return MOON_NAMES.find(m => ph < m[0])[1]; }
+function marineHtml(i){
+  if (!COND) return ''; const ex = exAt(i), wt = waterTempAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i];
+  const dash = '<b>—</b>', cell = (val, label) => `<div>${val != null ? `<b>${val}</b>` : dash}<span>${label}</span></div>`;
+  const trend = ex.dp3 == null ? '' : ex.dp3 <= -0.5 ? ' ↓' : ex.dp3 >= 0.5 ? ' ↑' : ' →';
+  const sr = fmtTime(T0 + hr.sr*3600e3), ss = fmtTime(T0 + hr.ss*3600e3);
+  return `<div class="mc"><div class="mc-h"><span class="eyebrow">Marine conditions · ${hourLabel(i)}</span><small>NOAA · NWS · Open-Meteo</small></div><div class="mc-g">
+    ${cell(wt != null ? Math.round(wt)+'°F' : null, 'Water temp')}
+    ${cell(ex.wh != null ? ex.wh.toFixed(1)+' ft' : null, ex.wp ? `Waves · ${ex.wp.toFixed(0)}s` : 'Waves')}
+    ${cell(ex.sh != null ? ex.sh.toFixed(1)+' ft' : null, ex.sdir != null ? `Swell · ${card(ex.sdir)}` : 'Swell')}
+    ${cell(ex.cv != null ? ex.cv.toFixed(1)+' kt' : null, ex.cd != null ? `Current · ${card(ex.cd)}` : 'Current')}
+    ${cell(`${card(wd)} ${ws}`, 'Wind mph')}
+    ${cell(ex.p != null ? (ex.p*0.02953).toFixed(2)+trend : null, 'Pressure inHg')}
+    ${cell(Math.round(hr.moon*100)+'%', moonName(T0+i*3600e3))}
+    ${cell(ex.vis != null ? (ex.vis >= 10 ? '10+' : ex.vis.toFixed(1))+' mi' : null, 'Visibility')}
+  </div><p class="note" style="margin:8px 0 0">Sunrise ${sr} · Sunset ${ss}</p></div>`;
+}
 function paintBody(){
   const el = $('body');
   if (!COND){ el.innerHTML = `<div class="eyebrow">Loading conditions</div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:85%"></div>`; return; }
@@ -839,7 +1094,7 @@ function paintBody(){
   if (!vis.length){ el.innerHTML = cellsBusy.size ? `<div class="eyebrow">Finding spots in view</div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:85%"></div>` : `<div class="empty"><b>No mapped spots in view</b>Pan to the coast or zoom out a little. Spots come from passes, bridges, drop-offs, flats, mangroves, oyster bars, docks and reefs.</div>${installHtml()}`; wireInstall(); return; }
   const ranked = vis.map(z => ({z, s:score(z.k,cur)})).sort((a,b) => b.s.total-a.s.total);
   const counts = {}; vis.forEach(z => counts[z.type] = (counts[z.type]||0)+1);
-  el.innerHTML = `<div class="list-head"><span class="eyebrow">${vis.length} spots in view · best at ${hourLabel(cur)}</span><span class="legend">${TIER.map(t=>`<span class="t-${t[1]}"><i class="dot"></i>${t[2]}</span>`).join('')}</span></div>
+  el.innerHTML = `${marineHtml(cur)}<div class="list-head"><span class="eyebrow">${vis.length} spots in view · best at ${hourLabel(cur)}</span><span class="legend">${TIER.map(t=>`<span class="t-${t[1]}"><i class="dot"></i>${t[2]}</span>`).join('')}</span></div>
     <ol class="rank">${ranked.slice(0,30).map((r,n)=>`<li><button type="button" class="t-${r.s.tier[1]}" data-k="${r.z.k}"><span class="n">${n+1}</span><span class="nm">${esc(r.z.name)} <span class="kind">· ${r.z.label}</span><span class="why">${esc(shortWhy(r.s))}</span></span><span class="pill">${r.s.tier[2]}</span></button></li>`).join('')}</ol>
     ${ranked.length>30?`<p class="note">Showing the top 30. Zoom in to narrow the list.</p>`:''}
     <p class="note">${KIND_ORDER.filter(k=>counts[k]).map(k=>`${counts[k]} ${TYPES[k].label.toLowerCase()}`).join(' · ')}</p>
@@ -848,14 +1103,45 @@ function paintBody(){
   el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => selectZone(+b.dataset.k));
   wireInstall();
 }
+// ---- score breakdown: the ring, four factor bars, the extras and the reasons behind each
+let dnaOpen = store.get('sc-why-open', false);
+function ringSvg(total, tier){
+  const R = 34, C = 2*Math.PI*R, f = clamp(total,0,100)/100;
+  return `<svg class="dna-ring" viewBox="0 0 84 84" aria-hidden="true"><circle cx="42" cy="42" r="${R}" fill="none" stroke="var(--line)" stroke-width="7"/>
+    <circle cx="42" cy="42" r="${R}" fill="none" stroke="${COLORS[tier[1]]}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(C*f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 42 42)"/></svg>`;
+}
+function dnaHtml(s){
+  const bars = s.f.map(x => `<div class="dna-f"><div class="dna-l"><span>${x.label}</span><b style="color:${x.color}">${Math.round(x.val)}<small>/${x.max}</small></b></div><div class="dna-bar"><i style="width:${(x.val/x.max*100).toFixed(0)}%;background:${x.color}"></i></div></div>`).join('');
+  const sign = s.extra >= 0 ? '+' : '−', ex = Math.abs(s.extra);
+  const reasons = s.f.map(x => `<li><span class="dna-pts" style="color:${x.color}">${Math.round(x.val)}</span><span><b>${x.label}</b>${esc(x.why)}</span></li>`).join('')
+    + s.extras.map(x => `<li class="${x.pts>0?'up':x.pts<0?'down':''}"><span class="dna-pts">${x.pts>0?'+':x.pts<0?'−':''}${Math.abs(x.pts)}</span><span><b>${x.label}</b>${esc(x.why)}</span></li>`).join('');
+  return `<div class="dna t-${s.tier[1]}">
+    <div class="dna-top"><div class="dna-score">${ringSvg(s.total, s.tier)}<div class="dna-n"><b>${s.total}</b><span>${s.tier[2]}</span></div></div><div class="dna-fs">${bars}</div></div>
+    <button type="button" class="dna-x" id="dnaWhy" aria-expanded="${dnaOpen}"><span>${s.extras.length ? `<b>${sign}${ex}</b> from extras` : 'No extras'}</span><span class="dna-math">${s.base} ${sign} ${ex} = ${s.total}</span><span class="dna-tg">${dnaOpen?'Hide':'Why'}</span></button>
+    <ul class="dna-why" ${dnaOpen?'':'hidden'}>${reasons}</ul></div>`;
+}
+function wireDna(){ const b = $('dnaWhy'); if (!b) return; b.onclick = () => { dnaOpen = !dnaOpen; store.set('sc-why-open', dnaOpen); b.setAttribute('aria-expanded', dnaOpen);
+  b.querySelector('.dna-tg').textContent = dnaOpen ? 'Hide' : 'Why'; b.nextElementSibling.hidden = !dnaOpen; }; }
+function stormNote(z, b){ // flag storms in or right after the best window
+  for (let i = b.from; i <= Math.min(H-1, b.to+2); i++){ const w = COND.wx[i]; if (/thunder/i.test(w[4]||'')) return `<div class="warn">⚡ Storms in the forecast around ${hourLabel(i)}. Watch the radar layer and get off the water if you hear thunder.</div>`; }
+  return '';
+}
+function tideTurnsHtml(z, d){
+  if (!z.st) return ''; const tt = tideTurns(z.st, d); if (!tt.length) return '';
+  const C = z.cs && CURS.get(z.cs), cv = z.cs && curV(z.cs), now = cv && cv[cur] != null ? cv[cur] : null;
+  return `<div class="turns">${tt.map(x => `<div class="turn ${x.hi?'hi':'lo'}"><span>${x.hi?'↑ High':'↓ Low'}</span><b>${x.v.toFixed(1)} ft</b><small>${fmtTime(x.t)}</small></div>`).join('')}</div>
+    ${now != null ? `<p class="note">Current at ${esc(C.name)}: <b>${Math.abs(now).toFixed(1)} kt ${now >= 0 ? 'flood' : 'ebb'}</b> at ${hourLabel(cur)} (NOAA prediction).</p>` : ''}`;
+}
 function paintSpot(){
   const el = $('body'), z = ZONES[sel], s = score(sel,cur), d = HRS[cur].d, b = bestOfDay(d, [z]), key = sel+':'+cur;
   const stName = z.st ? (TIDES.get(z.st)||{}).name : null;
   el.innerHTML = `<div class="spot-head t-${s.tier[1]}"><h2>${esc(z.name)}</h2>
       <button class="close" type="button" aria-label="Back to all spots" id="closeSpot"><svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <div class="meta"><span class="pill">${s.tier[2]}</span><span>${z.label} · ${hourLabel(cur)} · score ${s.total}/100</span></div></div>
-    <div class="best"><span><span class="eyebrow">Best on ${DAYS[d].wd}</span><br><b>${hourLabel(b.from)}${b.to>b.from?'–'+hourLabel(b.to+1):''}</b> · ${tierOf(b.total)[2]}</span>${b.i!==cur?`<button type="button" id="goBest">Show this time</button>`:''}</div>
-    <ul class="why-list">${s.why.map(w=>`<li class="${w[0]>0?'up':'down'}"><span class="ic">${w[0]>0?'↑':'↓'}</span><span>${esc(w[1])}</span></li>`).join('')}</ul>
+    ${dnaHtml(s)}
+    <div class="best"><span><span class="eyebrow">Best on ${DAYS[d].wd}</span><br><b>${hourLabel(b.from)}${b.to>b.from?'–'+hourLabel(b.to+1):''}</b> · ${tierOf(b.total)[2]} ${b.total}</span>${b.i!==cur?`<button type="button" id="goBest">Show this time</button>`:''}</div>
+    ${stormNote(z, b)}
+    ${tideTurnsHtml(z, d)}
     <dl class="facts">
       <dt>Fishes best</dt><dd>${z.pref==='moving'?'Any moving tide':cap(z.pref)+' tide'}</dd>
       ${z.depth?`<dt>Depth</dt><dd>${esc(z.depth)}</dd>`:''}
@@ -867,6 +1153,7 @@ function paintSpot(){
     <button class="plan-btn" type="button" id="planBtn">Game plan for ${hourLabel(cur)}</button>
     <div id="planOut">${plans[key]?planHtml(plans[key]):''}</div>`;
   $('closeSpot').onclick = () => selectZone(null);
+  wireDna();
   const gb = $('goBest'); if (gb) gb.onclick = () => setTime(b.i);
   wireCoords($('body'));
   $('planBtn').onclick = () => { plans[key] = gamePlan(z, s, cur); const out = $('planOut'); out.innerHTML = planHtml(plans[key]); wireCopy();
@@ -991,7 +1278,7 @@ function selectZone(k){
     $('body').scrollTop = 0; }
 }
 
-function refresh(){ paintMap(); paintStatus(); paintHead(); paintBody(); paintDays(); paintScrub(); paintWx(); paintBest(); }
+function refresh(){ paintMap(); paintStatus(); paintHead(); paintBody(); paintDays(); paintScrub(); paintWx(); paintBest(); paintTimeLayers(); }
 
 // ---------------- search
 const GEO = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer', EXT = `${FL.w},${FL.s},${FL.e},${FL.n}`;

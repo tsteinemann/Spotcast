@@ -96,6 +96,16 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 /* layers */
 .layers{position:absolute;z-index:850;bottom:calc(var(--dock-h,120px) + 12px);right:calc(max(12px,env(safe-area-inset-right,0px)) + 56px);width:min(300px,calc(100% - 92px));max-height:calc(100% - var(--dock-h,120px) - 170px);overflow:auto;padding:12px 14px;display:grid;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--panel-2);padding:3px;border-radius:10px}
+.seg3{grid-template-columns:1fr 1fr 1fr}
+.ov-sec{display:block;margin-top:8px}
+.pl-bait{background:#2bb673;color:#fff;border:2px solid #fff}
+.radar-bar{position:absolute;z-index:820;left:50%;transform:translateX(-50%);white-space:nowrap;bottom:calc(var(--dock-h,120px) + 12px);display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:999px;font-size:13px;font-variant-numeric:tabular-nums}
+@media (min-width:900px){.radar-bar{bottom:24px}}
+.radar-bar button{all:unset;cursor:pointer;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--panel-2);font-size:11px}
+.radar-track{display:flex;gap:3px}.radar-track i{width:6px;height:6px;border-radius:50%;background:var(--line)}.radar-track i.on{background:var(--accent)}
+.arrow-ic{background:none;border:0}
+.arrow-ic div{display:flex;flex-direction:column;align-items:center;gap:1px;font:600 11px/1 var(--display);color:#fff;text-shadow:0 1px 2px #000,0 0 3px #000;white-space:nowrap}
+.wt-ic div{background:rgba(8,22,26,.85);border:1px solid var(--line);color:var(--fg);border-radius:999px;padding:3px 7px;font:600 12px/1 var(--display);white-space:nowrap;transform:translate(-50%,-50%);display:inline-block}
 .seg button{all:unset;cursor:pointer;text-align:center;padding:7px 4px;border-radius:8px;font-weight:600;font-size:14px;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:#06211d}
 .tog{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;font-size:14px;cursor:pointer;padding:2px 0}
@@ -248,6 +258,43 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .why-list li{display:grid;grid-template-columns:18px 1fr;gap:8px;font-size:14px;line-height:1.4}
 .why-list .ic{font-family:var(--display);font-weight:700;text-align:center}
 .why-list .up .ic{color:var(--accent)} .why-list .down .ic{color:var(--hot)}
+/* score breakdown */
+.dna{margin-top:12px;padding:12px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line)}
+.dna-top{display:grid;grid-template-columns:84px 1fr;gap:12px;align-items:center}
+.dna-score{position:relative;width:84px;height:84px}
+.dna-ring{width:84px;height:84px;display:block}
+.dna-n{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dna-n b{font-family:var(--display);font-weight:700;font-size:30px;line-height:1}
+.dna-n span{font-family:var(--display);font-weight:600;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.t-hot .dna-n b{color:var(--hot)} .t-great .dna-n b{color:var(--great)} .t-good .dna-n b{color:var(--good)} .t-fair .dna-n b{color:var(--fair)}
+.dna-fs{display:grid;gap:7px}
+.dna-l{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--display);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.dna-l b{font-size:15px;letter-spacing:0} .dna-l small{color:var(--muted);font-weight:500;font-size:11px}
+.dna-bar{height:5px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:3px}
+.dna-bar i{display:block;height:100%;border-radius:3px}
+.dna-x{all:unset;cursor:pointer;display:flex;gap:10px;align-items:center;width:100%;box-sizing:border-box;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:14px}
+.dna-x b{color:var(--great);font-family:var(--display);font-size:16px}
+.dna-math{color:var(--muted);font-variant-numeric:tabular-nums;flex:1}
+.dna-tg{color:var(--accent);font-weight:600}
+.dna-why{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:9px}
+.dna-why li{display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:14px;line-height:1.4}
+.dna-why li b{display:block;font-family:var(--display);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.dna-pts{font-family:var(--display);font-weight:700;font-size:16px;text-align:center;align-self:start;padding:3px 0;border-radius:8px;background:var(--panel)}
+.dna-why .up .dna-pts{color:var(--accent)} .dna-why .down .dna-pts{color:var(--hot)}
+.warn{margin-top:10px;padding:9px 12px;border-radius:12px;background:rgba(255,84,102,.12);border:1px solid rgba(255,84,102,.35);font-size:13px;line-height:1.4}
+.turns{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px;margin-top:10px}
+.turn{background:var(--panel-2);border-radius:10px;padding:7px 4px;text-align:center;display:grid;gap:1px}
+.turn span{font-size:11px;color:var(--muted);font-family:var(--display);letter-spacing:.06em;text-transform:uppercase}
+.turn b{font-family:var(--display);font-size:17px} .turn.hi b{color:var(--accent)} .turn.lo b{color:var(--great)}
+.turn small{color:var(--muted);font-size:12px}
+/* marine conditions */
+.mc{margin:4px 0 12px;padding:10px 12px;border-radius:14px;background:var(--panel-2);border:1px solid var(--line)}
+.mc-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mc-h small{color:var(--muted);font-size:11px}
+.mc-g{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 6px;margin-top:8px}
+.mc-g div{display:grid;gap:1px;min-width:0}
+.mc-g b{font-family:var(--display);font-size:17px;white-space:nowrap}
+.mc-g span{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .facts{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:14px 0 0;font-size:14px}
 .facts dt{color:var(--muted)} .facts dd{margin:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -342,7 +389,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
     <span class="eyebrow">Spots on the map</span>
     <div class="type-chips" id="typeChips" role="group" aria-label="Spot types"></div>
     <span class="eyebrow">Map</span>
-    <div class="seg" role="group" aria-label="Base map"><button type="button" data-base="sat" aria-pressed="true">Satellite</button><button type="button" data-base="relief" aria-pressed="false">Shaded relief</button></div>
+    <div class="seg seg3" role="group" aria-label="Base map"><button type="button" data-base="sat" aria-pressed="true">Satellite</button><button type="button" data-base="relief" aria-pressed="false">Relief</button><button type="button" data-base="chart" aria-pressed="false">Chart</button></div>
     <span class="eyebrow">Overlays</span>
     <label class="tog"><input type="checkbox" id="ov-labels"><span>Place names</span><small></small></label>
     <label class="tog"><input type="checkbox" id="ov-contours"><span>Depth contours</span><small>zoom in</small></label>
@@ -351,10 +398,17 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
     <label class="tog"><input type="checkbox" id="ov-oyster"><span>Oyster beds</span><i class="sw" style="background:#e8b45a"></i></label>
     <label class="tog"><input type="checkbox" id="ov-reefs"><span>Man-made reefs</span><i class="sw" style="background:#ff8a3d;border-radius:50%;width:12px"></i></label>
     <label class="tog"><input type="checkbox" id="ov-hardbottom"><span>Natural reef and hard bottom</span><i class="sw" style="background:#c48cff"></i></label>
+    <label class="tog"><input type="checkbox" id="ov-bait"><span>Bait and tackle shops</span><i class="pl-ic pl-bait sw-ic" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c3-5 9-6 14-3l4-3v12l-4-3c-5 3-11 2-14-3z"/><circle cx="7.5" cy="11" r=".6"/></svg></i></label>
+    <span class="eyebrow ov-sec">Weather and water</span>
+    <label class="tog"><input type="checkbox" id="ov-radar"><span>Radar</span><small>last hour</small></label>
+    <label class="tog"><input type="checkbox" id="ov-winds"><span>Wind arrows</span><small>by hour</small></label>
+    <label class="tog"><input type="checkbox" id="ov-currents"><span>Tidal currents</span><small>by hour</small></label>
+    <label class="tog"><input type="checkbox" id="ov-wtemp"><span>Water temperature</span><small>stations</small></label>
     <div class="depth-key" id="depthKey" hidden><div class="grad"></div><div class="ticks"><span>0</span><span>6</span><span>15</span><span>22</span><span>35</span><span>50</span><span>70+ ft</span></div></div>
     <button type="button" class="link-btn" id="introAgain">Show the intro again</button>
-    <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom, public fuel docks, boat ramps via UF GeoPlan), OpenStreetMap (fuel dock hours and VHF) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
+    <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom, public fuel docks, boat ramps via UF GeoPlan), OpenStreetMap (bait and tackle shops, fuel dock hours and VHF), NEXRAD radar via Iowa State Mesonet, NOAA nautical charts and current predictions, Open-Meteo (pressure, waves, swell) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
   </div>
+  <div class="radar-bar glass" id="radarBar" hidden><span id="radarTime">Radar</span><button type="button" id="radarPlay" aria-label="Pause radar">❚❚</button><div class="radar-track" id="radarTrack"></div></div>
   <section class="dock collapsed" id="dock" aria-label="Fishing spots">
     <button class="dock-head" id="dockHead" type="button" aria-expanded="false" aria-controls="body">
       <span class="grab" aria-hidden="true"></span>
