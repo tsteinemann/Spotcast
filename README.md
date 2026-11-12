@@ -21,7 +21,7 @@ All data is public and fetched live from the phone:
 - Open-Meteo pressure, cloud cover and visibility, plus marine waves, swell, surface current and sea temperature
 - NEXRAD radar via Iowa State Mesonet
 - NOAA ENC nautical charts
-- OpenStreetMap bait and tackle shops (via Overpass)
+- Bait and tackle shops: a built-in statewide list (`baits.json`) from OpenStreetMap and Esri places, plus hand-checked local shops
 - National Weather Service hourly forecast
 - NOAA NCEI elevation models (shaded relief and depth contours)
 - FWC inlets and passes, oyster beds, tidal flats, mangroves, marinas and docks, artificial reefs, and hard bottom
@@ -35,6 +35,7 @@ All data is public and fetched live from the phone:
 | `index.html` | Page layout and styles |
 | `app.js` | Spot generation, scoring, map rendering and data loading |
 | `stations.json` | Florida NOAA tide, water-temperature and current stations |
+| `baits.json` | Florida bait and tackle shops: name, lat, lng, hours, phone, website, address, live bait, note |
 | `sw.js` | Service worker: offline shell, tile and data caching |
 | `manifest.webmanifest`, `icons/` | Home screen install |
 

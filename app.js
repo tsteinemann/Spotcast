@@ -118,6 +118,10 @@ map.createPane('zones').style.zIndex = 450;
 map.createPane('labels').style.zIndex = 430; map.getPane('labels').style.pointerEvents = 'none';
 // Satellite = Esri World Imagery everywhere, with newer free imagery laid on top where it exists (newest last = on top):
 // NOAA post-storm aerials (Debby, Helene, Milton 2024; Isaias Oct 2026) and Sarasota's Dec 2025–Jan 2026 city aerials.
+// Safari holds on to a canvas's memory until garbage collection; shrinking it to zero frees it right away. Every
+// canvas-drawn tile (cleaned imagery, shaded relief, contours) is released the moment it scrolls off the map.
+L.GridLayer.mergeOptions({keepBuffer:1}); // hold one ring of off-screen tiles instead of two
+L.GridLayer.addInitHook(function(){ this.on('tileunload', e => { const t = e.tile; if (t && t.getContext){ t.width = 0; t.height = 0; } }); });
 const NEWER = [ // [tileset, west, south, east, north, max native zoom]
   ['20240807a',-83.2876,28.7999,-82.5374,29.4751,20],['20240808a',-83.7251,29.3624,-82.5499,30.4251,20],['20240812a',-82.6501,28.4999,-82.4999,28.9001,20],
   ['20240927a',-85.7501,29.5749,-85.0124,30.1751,21],['20240927b',-85.2126,29.5624,-84.1624,30.2001,20],['20240928a',-83.7126,29.4499,-83.3374,29.9751,20],
@@ -162,7 +166,7 @@ const sat = L.layerGroup([
   new ArcExport('https://srqgis.sarasotafl.gov/server/rest/services/City_Aerials_2026/MapServer/export', {bounds:[[27.27,-82.60],[27.40,-82.46]], minZoom:12, maxZoom:19, zIndex:2+NEWER.length})
 ]);
 const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {pane:'labels', maxNativeZoom:18, maxZoom:19});
-const zoneRenderer = L.canvas({pane:'zones', padding:.4, tolerance:6});
+const zoneRenderer = L.canvas({pane:'zones', padding:.15, tolerance:6});
 const zoneLayer = L.layerGroup().addTo(map);
 
 // ---- NOAA NCEI depth tiles (raw float grid, rendered here and mined for drop-offs)
@@ -303,7 +307,7 @@ function PlaceSet(kind, minZoom){ const all = [], layer = L.layerGroup(); let lo
   const sync = () => { if (!map.hasLayer(layer)) return; const b = map.getBounds().pad(0.3), on = map.getZoom() >= minZoom;
     all.forEach(m => { const want = on && b.contains(m.getLatLng()); if (want && !layer.hasLayer(m)) layer.addLayer(m); else if (!want && layer.hasLayer(m)) layer.removeLayer(m); }); };
   map.on('moveend', sync);
-  return {layer, all, sync, kind, load(fn){ if (loaded) { sync(); return; } if (loading) return; loading = fn().then(ms => { ms.forEach(m => all.push(m)); loaded = true; sync(); }).catch(() => toast('Could not load '+(kind==='fuel'?'fuel docks':'boat ramps')+' right now.')).finally(() => loading = null); }};
+  return {layer, all, sync, kind, load(fn){ if (loaded) { sync(); return; } if (loading) return; loading = fn().then(ms => { ms.forEach(m => all.push(m)); loaded = true; sync(); }).catch(() => toast('Could not load '+({fuel:'fuel docks',ramp:'boat ramps',bait:'bait shops'}[kind]||kind)+' right now.')).finally(() => loading = null); }};
 }
 const FUEL = PlaceSet('fuel', 9), RAMPS = PlaceSet('ramp', 10);
 // hours and VHF are not in the state data; look them up in OpenStreetMap when a fuel dock is opened (best effort)
@@ -518,40 +522,26 @@ function paintWtemp(){
     if (g.v == null) return;
     wtemps.layer.addLayer(L.marker([s[1],s[2]], {pane:'arrows', interactive:false, keyboard:false, icon:L.divIcon({className:'wt-ic', iconSize:[0,0], html:`<div>${Math.round(g.v)}°F</div>`})})); });
 }
-// bait and tackle shops from OpenStreetMap, loaded in half-degree cells as you pan
-const BAIT = {layer:L.layerGroup(), cells:new Set(), busy:new Set(), ids:new Set()};
-async function loadBait(){
-  if (!LS.bait || !map._loaded || map.getZoom() < 10) return; const b = map.getBounds(), keys = [];
-  for (let la = Math.floor(b.getSouth()*2)/2; la < b.getNorth(); la += .5) for (let ln = Math.floor(b.getWest()*2)/2; ln < b.getEast(); ln += .5) keys.push([la, ln]);
-  for (const [la, ln] of keys){ const key = la+','+ln; if (BAIT.cells.has(key) || BAIT.busy.has(key)) continue; BAIT.busy.add(key);
-    const bb = `${la},${ln},${la+.5},${ln+.5}`, q = `[out:json][timeout:20];(nwr["shop"="fishing"](${bb});nwr["shop"~"bait|outdoor|sports"]["name"~"bait|tackle",i](${bb});nwr["name"~"bait (and|&) tackle|bait shop",i](${bb}););out tags center;`;
-    let ok = false;
-    for (const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-      try { const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
-        const r = await fetch(host, {method:'POST', body:'data='+encodeURIComponent(q), headers:{'Content-Type':'application/x-www-form-urlencoded'}, signal:ctl.signal}); clearTimeout(t);
-        if (!r.ok) continue; const j = await r.json(); ok = true;
-        for (const e of (j.elements||[])){ const id = e.type+e.id; if (BAIT.ids.has(id)) continue; BAIT.ids.add(id);
-          const g = e.tags||{}, p = e.center || {lat:e.lat, lon:e.lon}; if (!p || p.lat == null) continue;
-          const m = L.marker([p.lat, p.lon], {pane:'places', icon:placeIcon('bait'), title:g.name||'Bait and tackle', keyboard:false});
-          placeTap(m, tok => showPlace(baitCard(g, p.lat, p.lon), m, tok)); BAIT.layer.addLayer(m); }
-        break;
-      } catch(e){}
-    }
-    BAIT.busy.delete(key); if (ok) BAIT.cells.add(key); else { if (!BAIT.warned){ BAIT.warned = true; toast('Could not load bait shops right now.'); } break; }
-  }
-}
+// bait and tackle shops: a statewide list built from OpenStreetMap plus hand-checked local shops (baits.json),
+// so it loads instantly and doesn't depend on a busy public server; only markers near the view are on the map
+const BAIT = PlaceSet('bait', 10);
+function loadBait(){ BAIT.load(async () => {
+  const rows = await getJSON('baits.json'), icon = placeIcon('bait');
+  return rows.map(([name, la, ln, hours, phone, web, addr, live, note]) => {
+    const g = {name, opening_hours:hours, phone, website:web, addr, live, note};
+    const m = L.marker([la,ln], {pane:'places', icon, title:name||'Bait and tackle', keyboard:false});
+    placeTap(m, tok => showPlace(baitCard(g, la, ln), m, tok)); return m; });
+}); }
 function baitCard(g, la, ln){
   const ref = sel != null ? ZONES[sel] : null, from = ref ? ref.c : (() => { const c = map.getCenter(); return [c.lat, c.lng]; })();
-  const mi = distKm(from, [la, ln]) * 0.621371, web = g.website || g['contact:website'], phone = g.phone || g['contact:phone'];
-  const addr = [g['addr:housenumber'], g['addr:street']].filter(Boolean).join(' ') + (g['addr:city'] ? ', '+g['addr:city'] : '');
-  const live = /live\s*bait|shrimp/i.test([g.description, g['shop:bait'], g.bait, g.name].filter(Boolean).join(' ')) || g.bait === 'live';
-  return pcard(g.name || 'Bait and tackle', `Bait and tackle${live ? ' · <span class="pc-tag">Live bait</span>' : ''}`,
-    prow('Distance', `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi ${ref ? 'from '+esc(ref.name) : 'from map center'}`) + prow('Hours', g.opening_hours ? prettyHours(g.opening_hours) : '<i>Not listed</i>') + prow('Phone', telLink(phone)) + prow('Address', addr.trim().replace(/^,\s*/,'') ? esc(addr.replace(/^,\s*/,'')) : ''),
-    `<div class="pc-foot">${dirLink(la,ln)}${web ? ` <a class="pc-btn ghost" href="${esc(/^https?:/.test(web)?web:'https://'+web)}" target="_blank" rel="noopener">Website</a>` : ''}</div><div class="pc-note">From OpenStreetMap. Call ahead to check what live bait they have.</div>`);
+  const mi = distKm(from, [la, ln]) * 0.621371, web = g.website;
+  return pcard(g.name || 'Bait and tackle', `Bait and tackle${g.live ? ' · <span class="pc-tag">Live bait</span>' : ''}`,
+    prow('Distance', `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi ${ref ? 'from '+esc(ref.name) : 'from map center'}`) + prow('Hours', g.opening_hours ? prettyHours(g.opening_hours) : '<i>Not listed</i>') + prow('Phone', telLink(g.phone)) + prow('Address', g.addr ? esc(g.addr) : ''),
+    `${g.note ? `<div class="pc-desc">${esc(g.note)}</div>` : ''}<div class="pc-foot">${dirLink(la,ln)}${web ? ` <a class="pc-btn ghost" href="${esc(/^https?:/.test(web)?web:'https://'+web)}" target="_blank" rel="noopener">Website</a>` : ''}</div><div class="pc-note">Call ahead to check what live bait they have.</div>`);
 }
 OV.bait = BAIT.layer; OV.winds = winds.layer; OV.currents = currents.layer; OV.wtemp = wtemps.layer;
 function paintTimeLayers(){ paintWinds(); paintCurrents(); }
-map.on('moveend', () => { if (LS.winds) loadWinds(); if (LS.currents) paintCurrents(); if (LS.wtemp) paintWtemp(); if (LS.bait) loadBait(); });
+map.on('moveend', () => { if (LS.winds) loadWinds(); if (LS.currents) paintCurrents(); if (LS.wtemp) paintWtemp(); });
 function applyLayers(){
   [sat, relief, chart].forEach(b => map.hasLayer(b) && map.removeLayer(b));
   (LS.base==='relief' ? relief : LS.base==='chart' ? chart : sat).addTo(map);
@@ -904,6 +894,7 @@ const SPOT_BONUS = {pass:'Passes funnel bait and fish through one place.', dropo
   flat:'Mapped flat with room to find fish.', mangrove:'Mangrove edges hold fish most of the year.', oyster:'Shell bars hold bait and fish.', reef:'Structure holds fish year round.', dock:'Docks hold fish but see a lot of pressure.'};
 function score(k, i){
   const key = k*1000+i; if (SCORE.has(key)) return SCORE.get(key);
+  if (SCORE.size > 6000){ let n = 0; for (const kk of SCORE.keys()){ SCORE.delete(kk); if (++n >= 2000) break; } } // keep memory flat on a phone
   const z = ZONES[k], hr = COND.hour[i], ex = exAt(i);
   // ---- tide (35)
   let tide = 14, tideWhy = [-1,'No tide prediction nearby yet, so this rating leans on wind, moon and light.'], r = 0, v = null, cur = null, swing = null;
@@ -1378,6 +1369,34 @@ function fitRail(){
 new ResizeObserver(fitRail).observe($('dock')); new ResizeObserver(fitRail).observe($('app'));
 addEventListener('resize', fitHeight); addEventListener('orientationchange', () => setTimeout(fitHeight, 300)); fitHeight();
 
+// ---------------- crash notes
+// iPhone Safari reloads the page with "A problem repeatedly occurred" when it runs out of memory. Spotcast keeps a small
+// note of what was on screen; if the last session ended without the page closing normally, it offers to copy that note.
+const CRUMB = 'sc-crumb', crumbErrs = [], crumbHist = []; let crumbPrev = null;
+try { crumbPrev = JSON.parse(localStorage.getItem(CRUMB) || 'null'); } catch(e){}
+function crumb(alive = true){
+  try { const ok = map._loaded, c = ok ? map.getCenter() : null;
+    if (ok){ const z = map.getZoom(), last = crumbHist[crumbHist.length-1]; if (!last || last[0] !== z) { crumbHist.push([z, Math.round((Date.now()-performance.timeOrigin)/1000)]); if (crumbHist.length > 10) crumbHist.shift(); } }
+    localStorage.setItem(CRUMB, JSON.stringify({alive, t:Date.now(), v:typeof SW_V !== 'undefined' ? SW_V : '', z: ok ? map.getZoom() : null, c: c ? [+c.lat.toFixed(3), +c.lng.toFixed(3)] : null,
+      base:LS.base, on:OVS.filter(k => LS[k]), zones:ZONES.length, imgs:document.images.length, canv:document.querySelectorAll('canvas').length, sel, hist:crumbHist, errs:crumbErrs.slice(-5),
+      mem: performance.memory ? Math.round(performance.memory.usedJSHeapSize/1e6) : null, up:Math.round((Date.now()-performance.timeOrigin)/1000)}));
+  } catch(e){}
+}
+addEventListener('error', e => { crumbErrs.push(String(e.message||e).slice(0,160)); crumb(); });
+addEventListener('unhandledrejection', e => { crumbErrs.push('promise: '+String((e.reason && e.reason.message) || e.reason).slice(0,140)); });
+setInterval(() => { if (document.visibilityState === 'visible') crumb(); }, 2500);
+map.on('zoomend moveend', () => crumb());
+addEventListener('pagehide', () => crumb(false));
+document.addEventListener('visibilitychange', () => crumb(document.visibilityState === 'visible'));
+function crashNote(){
+  const p = crumbPrev; if (!p || !p.alive || Date.now() - p.t > 20*60e3) return;
+  const txt = `Spotcast crash note\nwhen: ${new Date(p.t).toLocaleString()}\nzoom ${p.z} at ${p.c}\nbase ${p.base}; layers: ${(p.on||[]).join(', ')}\nspots ${p.zones}, images ${p.imgs}, canvases ${p.canv}, spot open: ${p.sel != null}\nzoom history: ${(p.hist||[]).map(h => h[0]+'@'+h[1]+'s').join(' ')}\nup ${p.up}s${p.errs && p.errs.length ? '\nerrors: '+p.errs.join(' | ') : ''}`;
+  $('placeBody').innerHTML = pcard('Spotcast reloaded unexpectedly', 'Safari restarted the page, usually because it ran out of memory.',
+    `<pre class="crash-pre">${esc(txt)}</pre>`, `<div class="pc-foot"><button type="button" class="pc-btn" id="crashCopy">Copy details</button></div><div class="pc-note">Paste this to whoever is fixing Spotcast. It shows what was on screen, nothing personal.</div>`);
+  $('placeCard').hidden = false; $('app').classList.add('pop-open');
+  $('crashCopy').onclick = () => copyText(txt, $('crashCopy'));
+}
+
 // ---------------- boot
 (async function boot(){
   window.__scBoot = true;
@@ -1389,6 +1408,7 @@ addEventListener('resize', fitHeight); addEventListener('orientationchange', () 
   // when a new version takes over, reload once so it shows right away
   if (navigator.serviceWorker && navigator.serviceWorker.controller){ let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (!done){ done = true; location.reload(); } }); }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(()=>{}); });
+  crashNote(); crumb();
   try { STATIONS = await getJSON('stations.json'); } catch(e){}
   const v = store.get('sz3-view', null) || (store.get('sz2-place', null) ? Object.assign({z:13}, store.get('sz2-place')) : {lat:27.632, lng:-82.72, z:13, name:'Fort De Soto, FL'});
   placeName = v.name || null;

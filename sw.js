@@ -1,5 +1,5 @@
-const V = 'spotcast-v25';
-const SHELL = ['./', 'index.html', 'app.js', 'planner.js', 'intro.js', 'manifest.webmanifest', 'stations.json', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+const V = 'spotcast-v26';
+const SHELL = ['./', 'index.html', 'app.js', 'planner.js', 'intro.js', 'manifest.webmanifest', 'stations.json', 'baits.json', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js'];
