@@ -97,7 +97,7 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
 .layers{position:absolute;z-index:850;bottom:calc(var(--dock-h,120px) + 12px);right:calc(max(12px,env(safe-area-inset-right,0px)) + 56px);width:min(300px,calc(100% - 92px));max-height:calc(100% - var(--dock-h,120px) - 170px);overflow:auto;padding:12px 14px;display:grid;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--panel-2);padding:3px;border-radius:10px}
 .seg3{grid-template-columns:1fr 1fr 1fr}
-.ov-sec{display:block;margin-top:8px}
+.ov-sec{display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .pl-bait{background:#2bb673;color:#fff;border:2px solid #fff}
 .radar-bar{position:absolute;z-index:820;left:50%;transform:translateX(-50%);white-space:nowrap;bottom:calc(var(--dock-h,120px) + 12px);display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:999px;font-size:13px;font-variant-numeric:tabular-nums}
 @media (min-width:900px){.radar-bar{bottom:24px}}
@@ -389,25 +389,26 @@ button:focus-visible,.ctl:focus-visible{outline:2px solid var(--accent);outline-
   <div class="layers glass" id="layersPanel" hidden>
     <span class="eyebrow">Spots on the map</span>
     <div class="type-chips" id="typeChips" role="group" aria-label="Spot types"></div>
-    <span class="eyebrow">Map</span>
+    <span class="eyebrow ov-sec">Map</span>
     <div class="seg seg3" role="group" aria-label="Base map"><button type="button" data-base="sat" aria-pressed="true">Satellite</button><button type="button" data-base="relief" aria-pressed="false">Relief</button><button type="button" data-base="chart" aria-pressed="false">Chart</button></div>
-    <span class="eyebrow">Overlays</span>
     <label class="tog"><input type="checkbox" id="ov-labels"><span>Place names</span><small></small></label>
     <label class="tog"><input type="checkbox" id="ov-contours"><span>Depth contours</span><small>zoom in</small></label>
-    <label class="tog"><input type="checkbox" id="ov-fuel"><span>Public fuel docks</span><i class="pl-ic pl-fuel sw-ic" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg></i></label>
-    <label class="tog"><input type="checkbox" id="ov-ramps"><span>Public boat ramps</span><i class="pl-ic pl-ramp sw-ic" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l18-7"/><path d="M7 13.5l2.2-4.3h6.5l1.6 2"/><path d="M2 21h20"/></svg></i></label>
+    <div class="depth-key" id="depthKey" hidden><div class="grad"></div><div class="ticks"><span>0</span><span>6</span><span>15</span><span>22</span><span>35</span><span>50</span><span>70+ ft</span></div></div>
+    <span class="eyebrow ov-sec">Fishing structure</span>
     <label class="tog"><input type="checkbox" id="ov-oyster"><span>Oyster beds</span><i class="sw" style="background:#e8b45a"></i></label>
     <label class="tog"><input type="checkbox" id="ov-reefs"><span>Man-made reefs</span><i class="sw" style="background:#ff8a3d;border-radius:50%;width:12px"></i></label>
     <label class="tog"><input type="checkbox" id="ov-hardbottom"><span>Natural reef and hard bottom</span><i class="sw" style="background:#c48cff"></i></label>
+    <span class="eyebrow ov-sec">Bait, ramps and fuel</span>
     <label class="tog"><input type="checkbox" id="ov-bait"><span>Bait and tackle shops</span><i class="pl-ic pl-bait sw-ic" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c3-5 9-6 14-3l4-3v12l-4-3c-5 3-11 2-14-3z"/><circle cx="7.5" cy="11" r=".6"/></svg></i></label>
+    <label class="tog"><input type="checkbox" id="ov-ramps"><span>Public boat ramps</span><i class="pl-ic pl-ramp sw-ic" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l18-7"/><path d="M7 13.5l2.2-4.3h6.5l1.6 2"/><path d="M2 21h20"/></svg></i></label>
+    <label class="tog"><input type="checkbox" id="ov-fuel"><span>Public fuel docks</span><i class="pl-ic pl-fuel sw-ic" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16"/><path d="M4 10h10"/><path d="M14 8h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/></svg></i></label>
     <span class="eyebrow ov-sec">Weather and water</span>
     <label class="tog"><input type="checkbox" id="ov-radar"><span>Radar</span><small>last hour</small></label>
     <label class="tog"><input type="checkbox" id="ov-winds"><span>Wind arrows</span><small>by hour</small></label>
     <label class="tog"><input type="checkbox" id="ov-currents"><span>Tidal currents</span><small>by hour</small></label>
     <label class="tog"><input type="checkbox" id="ov-wtemp"><span>Water temperature</span><small>stations</small></label>
-    <div class="depth-key" id="depthKey" hidden><div class="grad"></div><div class="ticks"><span>0</span><span>6</span><span>15</span><span>22</span><span>35</span><span>50</span><span>70+ ft</span></div></div>
     <button type="button" class="link-btn" id="introAgain">Show the intro again</button>
-    <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom, public fuel docks, boat ramps via UF GeoPlan), OpenStreetMap (bait and tackle shops, fuel dock hours and VHF), NEXRAD radar via Iowa State Mesonet, NOAA nautical charts and current predictions, Open-Meteo (pressure, waves, swell) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
+    <p class="src">Live from NOAA (depth, tides, water temp), NWS (wind), FWC (inlets, oyster beds, reefs, hard bottom, public fuel docks, boat ramps via UF GeoPlan), OpenStreetMap and Esri places (bait and tackle shops), OpenStreetMap (fuel dock hours and VHF), NEXRAD radar via Iowa State Mesonet, NOAA nautical charts and current predictions, Open-Meteo (pressure, waves, swell) and Esri (imagery, search). Depth is approximate feet below low tide. Not for navigation.</p>
   </div>
   <div class="radar-bar glass" id="radarBar" hidden><span id="radarTime">Radar</span><button type="button" id="radarPlay" aria-label="Pause radar">❚❚</button><div class="radar-track" id="radarTrack"></div></div>
   <section class="dock collapsed" id="dock" aria-label="Fishing spots">
