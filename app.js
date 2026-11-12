@@ -679,7 +679,7 @@ function lakeSpecies(type, L){
   const bass = spots ? ['Spotted bass','Largemouth bass'] : ['Largemouth bass'];
   switch (type){
     case 'point': return bass.concat(stripers ? ['Striped bass'] : [], ['Crappie']);
-    case 'cove': return ['Largemouth bass','Crappie','Bream'];
+    case 'cove': return ['Largemouth bass','Crappie'].concat(stripers ? ['Striped bass'] : [], ['Bream']);
     case 'bridge': return ['Crappie'].concat(bass, stripers ? ['Striped bass'] : []);
     default: return ['Crappie'].concat(bass, ['Bream']);
   }
@@ -965,12 +965,12 @@ async function loadExtras(c){
   // lake surface temperature tracks the last five days of air temperature closely enough to pick the season's pattern
   const airAvg = t => { if (!fc) return null; let sum = 0, n = 0; for (let h = 0; h < 120; h += 3){ const v = at(fc,fi,'temperature_2m', t - h*3600e3); if (v != null){ sum += v; n++; } } return n >= 10 ? sum/n : null; };
   return HRS.map(({t}) => {
-    const lakeT = airAvg(t);
+    const air = airAvg(t), lakeT = air == null ? null : c[0] >= 30.7 ? 0.5*(air + 2) + 0.5*lakeClimo(t) : air + 2; // Georgia: half recent air, half the lake's seasonal norm
     const p = at(fc,fi,'pressure_msl',t), p3 = at(fc,fi,'pressure_msl',t-3*3600e3), vis = at(fc,fi,'visibility',t), cv = at(mr,mi,'ocean_current_velocity',t), sst = at(mr,mi,'sea_surface_temperature',t);
     return {p, dp3: p != null && p3 != null ? p - p3 : null, cloud: at(fc,fi,'cloud_cover',t), vis: vis == null ? null : vis/1609.34,
       wh: at(mr,mi,'wave_height',t), wp: at(mr,mi,'wave_period',t), wdir: at(mr,mi,'wave_direction',t),
       sh: at(mr,mi,'swell_wave_height',t), sp: at(mr,mi,'swell_wave_period',t), sdir: at(mr,mi,'swell_wave_direction',t),
-      cv: cv == null ? null : cv/1.852, cd: at(mr,mi,'ocean_current_direction',t), sst: sst == null ? null : sst*9/5+32, lakeT: lakeT == null ? null : lakeT + 2};
+      cv: cv == null ? null : cv/1.852, cd: at(mr,mi,'ocean_current_direction',t), sst: sst == null ? null : sst*9/5+32, lakeT};
   });
 }
 const exAt = i => (COND && COND.ex && COND.ex[i]) || {};
@@ -1009,20 +1009,30 @@ function tideTurns(id, d){ // highs and lows on day d
 
 // ---------------- scoring
 // ---- lake factor (35): where fish are this time of year, from estimated water temperature and the month, plus lake level
+// Typical surface temperature by month for Lanier-type reservoirs (°F); deep lakes lag the air, so the estimate leans on this.
+const LAKE_CLIMO = [51,51,55,64,73,79,83,85,82,75,66,57];
+function lakeClimo(t){ const dt = new Date(t), m = dt.getMonth(), f = (dt.getDate() - 15) / 30, n = f >= 0 ? (m + 1) % 12 : (m + 11) % 12;
+  return LAKE_CLIMO[m] + (LAKE_CLIMO[n] - LAKE_CLIMO[m]) * Math.abs(f); }
+// Turnover: the layers mix from mid-October until about Christmas (Georgia DNR). Turned water in creek backs goes dark and foamy.
+const inTurnover = (T, month) => (month === 9 && T < 70) || month === 10 || (month === 11 && T >= 50);
 function lakeSeason(T, month){
-  if (T == null) T = [52,54,58,65,72,79,83,84,80,72,62,55][month];
-  const fall = month >= 8 && month <= 11;
-  if (T < 50) return {k:'winter', txt:`About ${Math.round(T)}°F water: winter pattern. Fish hold deep on steep points, bluffs and bridge channels and feed slowly.`};
-  if (T < 58) return fall ? {k:'latefall', txt:`About ${Math.round(T)}°F water and cooling: late fall. Bait balls up on main-lake points and creek mouths.`} : {k:'prespawn', txt:`About ${Math.round(T)}°F water and warming: pre-spawn. Fish stage on secondary points heading into coves.`};
-  if (T < 70) return fall ? {k:'fall', txt:`About ${Math.round(T)}°F water and cooling: fall. Shad push into the backs of creeks and coves and bass follow.`} : {k:'spawn', txt:`About ${Math.round(T)}°F water: spawn. Bass and crappie move shallow into protected coves and pockets.`};
-  if (T < 80) return {k:'postspawn', txt:`About ${Math.round(T)}°F water: post-spawn into early summer. Fish move out to points, docks and the first drop.`};
-  return {k:'summer', txt:`About ${Math.round(T)}°F water: summer. Fish go deep on main-lake points and humps; early and late are best.`};
+  if (T == null) T = LAKE_CLIMO[month];
+  const fall = month >= 8 && month <= 11, t = Math.round(T), turn = inTurnover(T, month);
+  const TURN = ' The lake may be turning over: skip creeks with dark, coffee-colored water and foam, and fish clear water on the main lake.';
+  if (T < 50 || (T < 54 && (month <= 1 || month === 11))) return {k:'winter', txt:`About ${t}°F water: winter. Stripers push into the middle and backs of creeks after bait, so watch for gulls and loons. Bass and crappie hold deep on channel ledges, bluffs and deep docks and bite slowly.`};
+  if (T < 60) return fall ? {k:'latefall', turn, txt:`About ${t}°F water and cooling: late fall. Bait balls up on main-lake points and creek mouths, and stripers start moving into the creeks.${turn ? TURN : ''}`} : {k:'prespawn', txt:`About ${t}°F water and warming: pre-spawn. Bass stage on rocky points heading into coves, and herring and stripers move up the creeks.`};
+  if (T < 68) return fall ? {k:'fall', turn, txt:`About ${t}°F water and cooling: fall. Stripers and spotted bass school on main-lake humps and points, and some shad push into creek backs.${turn ? TURN : ''}`} : {k:'spawn', txt:`About ${t}°F water: spawn. Largemouth and crappie move shallow into protected coves; spotted bass bed deeper on gravel points.`};
+  if (T < 78 && !fall && month >= 3 && month <= 5) return {k:'herring', txt:`About ${t}°F water: herring and shad spawn. Bait spawns on hard banks at first light, like clay points, riprap, bridge pilings and marina walls, and stripers and spotted bass crash it. Fish points, bridges and docks early.`};
+  if (T < 80) return fall ? {k:'fall', turn, txt:`About ${t}°F water and cooling: early fall. Fish start leaving their summer depths and school on points and humps.${turn ? TURN : ''}`} : {k:'postspawn', txt:`About ${t}°F water: post-spawn into early summer. Fish move out to points, docks and the first drop.`};
+  return {k:'summer', txt:`About ${t}°F water: summer. The lake stratifies; stripers drop below the thermocline (about 30 ft) and bass go to deep points and humps. Early and late are best.`};
 }
 const SEASON_FIT = { // [point, cove, bridge, dock] out of 30
-  winter:[24,8,26,18], prespawn:[27,22,22,22], spawn:[18,30,18,26], postspawn:[28,16,22,25], summer:[27,9,23,22], fall:[22,30,22,22], latefall:[28,16,24,20] };
+  winter:[24,22,26,22], prespawn:[27,22,22,22], spawn:[22,30,18,26], herring:[30,14,28,27], postspawn:[28,16,22,25], summer:[27,9,23,22], fall:[27,26,22,22], latefall:[27,20,24,22] };
+const SEASON_NAME = {winter:'winter', prespawn:'pre-spawn', spawn:'spawn', herring:'herring spawn', postspawn:'post-spawn', summer:'summer', fall:'fall', latefall:'late fall'};
 function lakeFactor(z, i){
   const ex = exAt(i), month = new Date(HRS[i].t).getMonth(), S = lakeSeason(ex.lakeT, month), col = {point:0, cove:1, bridge:2, dock:3}[z.type] ?? 0;
   let val = SEASON_FIT[S.k][col], why = S.txt, sign = val >= 24 ? 2 : val >= 18 ? 1 : -1;
+  if (S.turn){ if (z.type === 'cove'){ val -= 6; sign = Math.min(sign, 1); } else if (z.type === 'point') val += 1; } // turnover reaches creek backs first
   const fits = val >= 24 ? ` ${z.label}s fit that pattern well.` : val < 18 ? ` ${z.label}s are off the main pattern right now.` : '';
   const lv = lakeLevel(z);
   if (lv && lv.now != null){ const d = lv.d24;
@@ -1228,7 +1238,7 @@ function marineHtml(i){
     const near = [...LAKES.values()].sort((a,b) => distKm([m.lat,m.lng], a.c) - distKm([m.lat,m.lng], b.c))[0], lv = near && near.gauge ? LEVELS.get(near.gauge[0]) : null, trend = ex.dp3 == null ? '' : ex.dp3 <= -0.5 ? ' ↓' : ex.dp3 >= 0.5 ? ' ↑' : ' →';
     return `<div class="mc"><div class="mc-h"><span class="eyebrow">${esc(near ? shortLake(near.name) : 'Lake')} · ${hourLabel(i)}</span><small>USGS · NWS · Open-Meteo</small></div><div class="mc-g">
       ${cell(ex.lakeT != null ? Math.round(ex.lakeT)+'°F' : null, 'Water (est.)')}${cell(lv && lv.now != null ? lv.now.toFixed(1)+' ft' : null, 'Lake level')}${cell(lv && lv.now != null ? (lv.d24 >= 0 ? '+' : '')+lv.d24.toFixed(2)+' ft' : null, 'Last 24 hours')}${cell(`${card(wd)} ${ws}`, 'Wind mph')}
-      ${cell(ex.p != null ? (ex.p*0.02953).toFixed(2)+trend : null, 'Pressure inHg')}${cell(Math.round(hr.moon*100)+'%', moonName(T0+i*3600e3))}${cell(ex.vis != null ? (ex.vis >= 10 ? '10+' : ex.vis.toFixed(1))+' mi' : null, 'Visibility')}${cell(lakeSeason(ex.lakeT, new Date(HRS[i].t).getMonth()).k.replace('latefall','late fall').replace('prespawn','pre-spawn').replace('postspawn','post-spawn'), 'Pattern')}
+      ${cell(ex.p != null ? (ex.p*0.02953).toFixed(2)+trend : null, 'Pressure inHg')}${cell(Math.round(hr.moon*100)+'%', moonName(T0+i*3600e3))}${cell(ex.vis != null ? (ex.vis >= 10 ? '10+' : ex.vis.toFixed(1))+' mi' : null, 'Visibility')}${cell((S => SEASON_NAME[S.k] + (S.turn ? ', turnover' : ''))(lakeSeason(ex.lakeT, new Date(HRS[i].t).getMonth())), 'Pattern')}
     </div></div>`; } } const ex = exAt(i), wt = waterTempAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i];
   const dash = '<b>—</b>', cell = (val, label) => `<div>${val != null ? `<b>${val}</b>` : dash}<span>${label}</span></div>`;
   const trend = ex.dp3 == null ? '' : ex.dp3 <= -0.5 ? ' ↓' : ex.dp3 >= 0.5 ? ' ↑' : ' →';
@@ -1329,11 +1339,14 @@ function shortWhy(s){ const up = s.why.filter(w=>w[0]>0)[0], dn = s.why.filter(w
 
 // ---- game plan
 function gamePlan(z, s, i){
-  if (z.lake){ const S = lakeSeason(exAt(i).lakeT, new Date(HRS[i].t).getMonth()).k, [ws] = COND.wx[i], low = COND.hour[i].dS <= 1.5 || COND.hour[i].alt < 0;
-    const deep = /winter|summer/.test(S), shallowBite = /spawn|fall|prespawn/.test(S);
-    if (z.type === 'cove') return `### Start here\n${shallowBite ? 'Work the back half of the cove and any flat pockets; that is where fish are now.' : 'Start at the mouth of the cove where it meets deeper water; fish are not far back this time of year.'}\n### How to work it\nMove slowly and fan-cast the bank, docks and laydowns. ${ws > 12 ? 'Fish the windy side first.' : 'Keep casts long in calm water.'}\n### Baits\n- Shallow: weightless soft plastic, squarebill crankbait, or a spinnerbait\n- Crappie: small jig or minnow around brush and dock posts\n- ${low ? 'Low light: topwater walking bait or buzzbait' : 'Bright sun: shaky head or wacky rig in the shade'}\n### If it's slow\nBack out toward the mouth and the first drop, or try the next cove.`;
-    if (z.type === 'bridge') return `### Start here\nFish the pilings and riprap where the channel swings under the span.\n### How to work it\nWork the shady side of the pilings, then the riprap corners. ${deep ? 'Fish deep and slow along the channel edge.' : 'Cast to the riprap and pilings and bring baits down the slope.'}\n### Baits\n- Crappie: 1/16 oz jig or live minnow tight to the pilings\n- Bass: crankbait along the riprap, jig on the piling bases\n- Stripers: live herring or a bucktail where bait shows on the graph\n### If it's slow\nTry the other side of the bridge, or move to a nearby point.`;
-    if (z.type === 'dock') return `### Start here\nSkip baits under the deepest docks and the slips closest to the channel.\n### How to work it\nFish the shady side and the walkway posts; ten casts a dock, then move.\n### Baits\n- Crappie: small jig skipped under the slips, or a minnow under a float\n- Bass: shaky head or wacky rig skipped into the shade\n- Bream: crickets or worms near the walkways\n### If it's slow\nMove to docks with brush or deeper water under them.`;
+  if (z.lake){ const SS = lakeSeason(exAt(i).lakeT, new Date(HRS[i].t).getMonth()), S = SS.k, [ws] = COND.wx[i], low = COND.hour[i].dS <= 1.5 || COND.hour[i].alt < 0;
+    const deep = /winter|summer/.test(S), shallowBite = /^(spawn|fall|prespawn)$/.test(S);
+    const turnNote = SS.turn ? '\n### Turnover check\nIf the water back here looks dark, coffee-colored or foamy, it has turned over. Leave and fish clear water on the main lake.' : '';
+    if (z.type === 'cove' && S === 'winter') return `### Start here\nIdle from the middle of the cove toward the back and watch for gulls, loons and fish rolling on top. Winter stripers push in here after bait.\n### How to work it\nIf fish are up, cast to them. If not, set out freelines and downlines with herring and work slowly back, or troll an umbrella rig. Bass and crappie sit deeper, near the mouth and on deep docks.\n### Baits\n- Stripers on top: lead-head fluke, bucktail or small jerkbait\n- Stripers down: blueback herring or trout on a downline, or a four-arm umbrella rig after a cold front\n- Crappie: jig shot under the deepest docks and let fall until it stops\n### If it's slow\nTry the next creek; winter fish move a lot, so keep looking until you see them on top or on the graph.`;
+    if (z.type === 'point' && S === 'herring') return `### Start here\nBe here at first light. Herring and shad spawn on the hard clay or rock edge of the point, and stripers and spotted bass crash them. ${ws >= 5 ? `Start on the side the ${ws} mph wind is blowing into.` : ''}\n### How to work it\nStay off the bank and cast parallel to it, then work the end of the point and any brush in 15 to 35 ft once the sun is up.\n### Baits\n- Topwater: walking bait, popper or wake bait at dawn\n- Subsurface: 1/4 oz ball-head swimbait, underspin or white spinnerbait\n- Live: herring pitched to the point or on a freeline\n- Later: shaky head or drop shot on the brush\n### If it's slow\nTry a red clay point or a marina wall nearby, where the spawn may be later.`;
+    if (z.type === 'cove') return `### Start here\n${shallowBite ? 'Work the back half of the cove and any flat pockets; that is where fish are now.' : 'Start at the mouth of the cove where it meets deeper water; fish are not far back this time of year.'}${turnNote}\n### How to work it\nMove slowly and fan-cast the bank, docks and laydowns. ${ws > 12 ? 'Fish the windy side first.' : 'Keep casts long in calm water.'}\n### Baits\n- Shallow: weightless soft plastic, squarebill crankbait, or a spinnerbait\n- Crappie: small jig or minnow around brush and dock posts\n- ${low ? 'Low light: topwater walking bait or buzzbait' : 'Bright sun: shaky head or wacky rig in the shade'}\n### If it's slow\nBack out toward the mouth and the first drop, or try the next cove.`;
+    if (z.type === 'bridge') return `### Start here\nFish the pilings and riprap where the channel swings under the span.${S === 'herring' ? ' At first light, herring and shad spawn on the pilings and riprap; throw topwater, a swimbait or a fluke tight to them.' : ''}\n### How to work it\nWork the shady side of the pilings, then the riprap corners. ${deep ? 'Fish deep and slow along the channel edge.' : 'Cast to the riprap and pilings and bring baits down the slope.'}\n### Baits\n- Crappie: 1/16 oz jig or live minnow tight to the pilings\n- Bass: crankbait along the riprap, jig on the piling bases\n- Stripers: live herring or a bucktail where bait shows on the graph\n### If it's slow\nTry the other side of the bridge, or move to a nearby point.`;
+    if (z.type === 'dock') return `### Start here\nSkip baits under the deepest docks and the slips closest to the channel.${S === 'herring' ? ' At first light, run a spinnerbait, underspin or fluke parallel to the marina walls, where herring spawn.' : ''}\n### How to work it\nFish the shady side and the walkway posts; ten casts a dock, then move.\n### Baits\n- Crappie: small jig skipped under the slips, or a minnow under a float\n- Bass: shaky head or wacky rig skipped into the shade\n- Bream: crickets or worms near the walkways\n### If it's slow\nMove to docks with brush or deeper water under them.`;
     return `### Start here\n${deep ? 'Idle the point and find where it drops into deeper water; fish sit on that break.' : 'Start shallow on the point and work out toward the drop.'} ${ws >= 5 ? `Fish the side the ${ws} mph wind is blowing into.` : ''}\n### How to work it\nPosition off the point and cast up onto it, bringing baits down the slope.\n### Baits by depth\n- Shallow end: crankbait, spinnerbait, ${low ? 'or topwater at low light' : 'or a swimbait'}\n- The break: jig or Carolina rig dragged down the slope\n- Deep: drop shot or spoon ${S==='winter' ? 'right on the bottom' : 'where bait shows on the graph'}\n### If it's slow\nTry the next point, or the secondary points leading into a cove.`;
   }
   const t = s.tide, [ws, wd] = COND.wx[i], slack = Math.abs(t.r||0) < .04, dir = slack ? 'slack' : t.dir, windy = ws > 14;
