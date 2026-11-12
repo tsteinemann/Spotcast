@@ -2,7 +2,7 @@
 
 **Know where. Know when.** The forecast for where to fish.
 
-Spotcast is an installable web app for Florida anglers. Pan anywhere along the Florida coast, search a town, or use your location. Spots load automatically for whatever is on screen: passes, bridges, channel drop-offs, tidal flats, mangrove shorelines, oyster bars, public docks and man-made reefs. Each one is rated Hot, Great, Good or Fair for every hour of the next seven days. The score is built in the open: tide (35), wind (25), moon (20) and light (20) make the base, then extras add or take points for the spot type, the pressure trend, water temperature for the main species, seas, sky and storms. Passes, bridges and drop-offs near a NOAA current station score on the predicted current itself, and a small tide swing counts against a spot. Every rating shows its reasons, and every spot has a short game plan.
+Spotcast is an installable web app for Florida and Georgia anglers. Pan anywhere along the Florida or Georgia coast, search a town, or use your location. Spots load automatically for whatever is on screen: passes, bridges, channel drop-offs, tidal flats, mangrove shorelines, oyster bars, public docks and man-made reefs. Each one is rated Hot, Great, Good or Fair for every hour of the next seven days. The score is built in the open: tide (35), wind (25), moon (20) and light (20) make the base, then extras add or take points for the spot type, the pressure trend, water temperature for the main species, seas, sky and storms. Passes, bridges and drop-offs near a NOAA current station score on the predicted current itself, and a small tide swing counts against a spot. Every rating shows its reasons, and every spot has a short game plan.
 
 The map also has radar (last hour, looped), NOAA nautical charts, tidal current and wind arrows that follow the hour on the timeline, water temperature at NOAA stations, and bait and tackle shops.
 
@@ -25,7 +25,8 @@ All data is public and fetched live from the phone:
 - National Weather Service hourly forecast
 - NOAA NCEI elevation models (shaded relief and depth contours)
 - FWC inlets and passes, oyster beds, tidal flats, mangroves, marinas and docks, artificial reefs, and hard bottom
-- FDOT and local bridge locations
+- FDOT and local bridge locations; the National Bridge Inventory for Georgia
+- Georgia DNR offshore and inshore artificial reefs (GPX master lists), Georgia sound entrances, OpenStreetMap ramps and marinas in Georgia
 - Esri World Imagery, reference labels and geocoder; OpenStreetMap Nominatim as backup search
 
 ## Files
@@ -35,6 +36,7 @@ All data is public and fetched live from the phone:
 | `index.html` | Page layout and styles |
 | `app.js` | Spot generation, scoring, map rendering and data loading |
 | `stations.json` | Florida NOAA tide, water-temperature and current stations |
+| `georgia.json` | Georgia sounds, DNR reefs, boat ramps and marinas |
 | `baits.json` | Florida bait and tackle shops: name, lat, lng, hours, phone, website, address, live bait, note |
 | `sw.js` | Service worker: offline shell, tile and data caching |
 | `manifest.webmanifest`, `icons/` | Home screen install |

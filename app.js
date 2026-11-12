@@ -1,6 +1,6 @@
 'use strict';
 // =====================================================================
-// Spotcast — spots load for whatever part of Florida is on screen.
+// Spotcast — spots load for whatever part of Florida or Georgia is on screen.
 // Spot types come from public structure data (FWC, FDOT) and from the
 // NOAA depth model (channel drop-offs); each is rated hourly from tides,
 // wind, moon and light.
@@ -14,7 +14,8 @@ const cap = s => s ? s[0].toUpperCase()+s.slice(1) : s;
 const DIRS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const card = d => DIRS[Math.round(((d%360)+360)%360/22.5)%16];
 const DIR_DEG = Object.fromEntries(DIRS.map((d,i)=>[d,i*22.5]));
-const FL = {s:24.3, w:-87.7, n:31.1, e:-79.8};
+const FL = {s:24.3, w:-87.7, n:35.05, e:-79.8}; // Florida and Georgia
+const inGAcoast = (la, ln) => la > 30.68 && la < 32.3 && ln > -82.1 && ln < -80.4; // Georgia's tidal coast
 const store = { get(k,d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } }, set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} } };
 function toast(msg, ms=3500){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, ms); }
 function distKm(a,b){ const R=6371, dLat=(b[0]-a[0])*Math.PI/180, dLng=(b[1]-a[1])*Math.PI/180, la=a[0]*Math.PI/180, lb=b[0]*Math.PI/180;
@@ -86,6 +87,14 @@ const TYPES = {
   reef:     {label:'Reef',          pref:'moving',   deep:true,  shelter:false, wind:'reef', base:3, depth:'', structure:'Man-made reef'}
 };
 function speciesFor(type, lat, lng){
+  if (inGAcoast(lat, lng)){ // Georgia: no snook; trout, reds and flounder inshore, sea bass and sheepshead on the reefs
+    switch (type){
+      case 'pass': case 'bridge': return ['Redfish','Sheepshead','Black drum','Flounder'];
+      case 'dock': return ['Sheepshead','Redfish','Black drum'];
+      case 'reef': return ['Black sea bass','Sheepshead','Spadefish','Cobia'];
+      default: return ['Redfish','Speckled trout','Flounder','Black drum'];
+    }
+  }
   const south = lat < 28.8, gulf = lng < -81.3 || lat < 25.6;
   const inshore = south ? ['Snook','Redfish','Speckled trout'] : ['Redfish','Speckled trout','Flounder'];
   switch (type){
@@ -102,6 +111,8 @@ const TIER = [[83,'hot','Hot'],[72,'great','Great'],[58,'good','Good'],[0,'fair'
 const tierOf = s => TIER.find(t => s >= t[0]);
 const COLORS = {hot:'#ff5466', great:'#ffb547', good:'#7fd6ee', fair:'#71848b'};
 let STATIONS = {tide:[], wt:[]};
+let GA = {inlets:[], reefs:[], reefGroups:[], inshore:[], ramps:[], marinas:[]}; // Georgia sounds, reefs, ramps, marinas (georgia.json)
+const GA_READY = fetch('georgia.json').then(r => r.json()).then(j => { GA = Object.assign(GA, j); }).catch(() => {});
 const ZONES = [];                     // every spot loaded so far
 const ZONE_IDS = new Set();
 let COND = null;                      // conditions for the area: wind, sun, moon, water temp
@@ -111,7 +122,7 @@ let cur = 0, sel = null, placeName = null;
 const plans = {};
 
 // ---------------- map
-const map = L.map('map', {zoomControl:false, zoomSnap:.5, minZoom:7, maxZoom:19, maxBounds:[[23.6,-88.6],[31.6,-79.0]], tap:false});
+const map = L.map('map', {zoomControl:false, zoomSnap:.5, minZoom:7, maxZoom:19, maxBounds:[[23.6,-88.6],[35.4,-79.0]], tap:false});
 map.attributionControl.setPrefix(false); map.attributionControl.setPosition('bottomleft');
 map.createPane('habitat').style.zIndex = 410;
 map.createPane('zones').style.zIndex = 450;
@@ -364,14 +375,18 @@ function rampCard(p, la, ln){
     note + `<div class="pc-foot">${dirLink(la,ln)}${web}</div>`);
 }
 function loadRamps(){ RAMPS.load(async () => {
+  await GA_READY;
   const where = "ACCESSTYPE LIKE '%GENERAL PUBLIC%' AND STATUS='OPEN FOR BUSINESS' AND RAMPTYPE IN ('STAND ALONE RAMP','BOAT RAMP WITHIN MARINA')";
   const fields = 'RAMPNAME,STREET1,CITY,HOURS,CONTACTPHO,ISFEEREQUI,FEEAMOUNT,TOTALLANES,TRAILER,ISRESTROOM,WATERBODYN,ACCESSTYPE,OPERATIONA,RAMPSTATUS,URL';
   const base = 'https://callisto.at.geoplan.ufl.edu/arcgis/rest/services/est/Coastal/MapServer/1/query?where='+encodeURIComponent(where)+'&outFields='+fields+'&outSR=4326&f=geojson';
   const pages = await Promise.all([0,1000].map(off => getJSON(base+'&resultOffset='+off+'&resultRecordCount=1000')));
   const icon = placeIcon('ramp');
-  return pages.flatMap(j => j.features||[]).map(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates;
+  const ga = (GA.ramps||[]).map(([nm, la, ln, fee, hrs, op]) => { const m = L.marker([la,ln], {pane:'places', icon, title:nm||'Boat ramp', keyboard:false});
+    placeTap(m, tok => showPlace(pcard(nm || 'Boat ramp', 'Boat ramp'+(op ? ' · '+esc(op) : ''), prow('Hours', hrs ? prettyHours(hrs) : '<i>Not listed</i>') + prow('Fee', fee === 'no' ? 'Free' : fee === 'yes' ? 'Yes' : ''),
+      `<div class="pc-foot">${dirLink(la,ln)}</div><div class="pc-note">From OpenStreetMap. Check with the operator for hours and fees.</div>`), m, tok)); return m; });
+  return ga.concat(pages.flatMap(j => j.features||[]).map(f => { const p = f.properties||{}, [ln,la] = f.geometry.coordinates;
     const m = L.marker([la,ln], {pane:'places', icon, title:tc(p.RAMPNAME)||'Boat ramp', keyboard:false});
-    placeTap(m, tok => showPlace(rampCard(p, la, ln), m, tok)); return m; });
+    placeTap(m, tok => showPlace(rampCard(p, la, ln), m, tok)); return m; }));
 }); }
 OV.fuel = FUEL.layer; OV.ramps = RAMPS.layer;
 // tapping a fuel dock or ramp opens a card above the dock (more reliable on iPhone than map popups)
@@ -577,7 +592,8 @@ const SRC = {
   hb1: FWC+'Coral_and_Hard_Bottom_Habitats_Statewide/MapServer/18',
   hb2: FWC+'West_Florida_Shelf_Benthic_Habitats/MapServer/13',
   br1: 'https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/FDOT_Bridges/FeatureServer/0',
-  br2: 'https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Non_FDOT_Bridges_20240418/FeatureServer/21'
+  br2: 'https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Non_FDOT_Bridges_20240418/FeatureServer/21',
+  nbi: 'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_National_Bridge_Inventory/FeatureServer/0' // national bridge inventory (Georgia)
 };
 function query(url, bb, extra={}){
   const p = new URLSearchParams(Object.assign({where:'1=1', geometry:bb.join(','), geometryType:'esriGeometryEnvelope', inSR:'4326', spatialRel:'esriSpatialRelIntersects', outSR:'4326', outFields:'*', f:'geojson', resultRecordCount:'1500'}, extra));
@@ -600,10 +616,11 @@ async function loadCell(key){
   // depth tiles for the cell plus a 2 km margin (z13)
   const PAD = 0.02, tx0 = Math.floor(lng2t(w-PAD,13)), tx1 = Math.floor(lng2t(w+CELL+PAD,13)), ty0 = Math.floor(lat2t(s+CELL+PAD,13)), ty1 = Math.floor(lat2t(s-PAD,13)), tiles = [];
   for (let x=tx0;x<=tx1;x++) for (let y=ty0;y<=ty1;y++) tiles.push([x,y]);
-  const [inlets, reefs, oys, flats, mangs, marinas, hb1, hb2, br1, br2, dem] = await Promise.all([
+  const [inlets, reefs, oys, flats, mangs, marinas, hb1, hb2, br1, br2, nbi, dem] = await Promise.all([
     query(SRC.inlets,bb), query(SRC.reefs,bb), query(SRC.oyster,bb,simp), query(SRC.flats,bb,simp), query(SRC.mangroves,bb,{maxAllowableOffset:'0.0001', geometryPrecision:'5', outFields:'OBJECTID'}),
     query(SRC.marinas,bb,{outFields:'Name,Usage,Wat_Name'}), query(SRC.hb1,bb,simp), query(SRC.hb2,bb,Object.assign({}, simp, {where:"Geoform = 'Coral Reef and Hardbottom'"})),
     query(SRC.br1,bb,{outFields:'OBJECTID'}), query(SRC.br2,bb,{outFields:'OBJECTID'}),
+    inGAcoast(s+CELL/2, w+CELL/2) ? query(SRC.nbi,bb,{where:"STATE_CODE_001='13' AND SERVICE_UND_042B IN ('5','6','7','8','9') AND STRUCTURE_LEN_MT_049 >= 50", outFields:'FEATURES_DESC_006A,FACILITY_CARRIED_007,STRUCTURE_LEN_MT_049'}) : Promise.resolve([]),
     Promise.all(tiles.map(([x,y]) => demTile(13,x,y).then(g => ({x,y,g})).catch(() => null)))]);
   const add = [];
   const push = (type, name, c, geom, extra={}) => {
@@ -750,6 +767,29 @@ async function loadCell(key){
   runs.filter(r => lineLenKm(r) >= 0.4).flatMap(r => splitLine(r, 0.9)).filter(r => lineLenKm(r) >= 0.3)
     .filter(seg => !nearDrop(seg)).sort((x,y) => lineLenKm(y) - lineLenKm(x)).slice(0,6)
     .forEach(seg => { const c = seg[Math.floor(seg.length/2)]; push('mangrove', 'Mangrove shoreline near '+nearName(c), c, {line:seg}, {structure:'Mangrove edge on fishable water; high tide pushes fish up under the roots'}); });
+  // ---- Georgia coast: sounds, bridges from the national inventory, state reefs and marinas
+  if (inGAcoast(s+CELL/2, w+CELL/2)){
+    const water = (c, minFt, maxM) => { // nearest point at least minFt deep within maxM metres
+      if (depthFt(c[0],c[1]) >= minFt) return c;
+      for (let r = 30; r <= maxM; r += 30) for (let k=0;k<16;k++){ const a = k*Math.PI/8, q = [c[0]+Math.sin(a)*r/111320, c[1]+Math.cos(a)*r/(111320*Math.cos(c[0]*Math.PI/180))]; if (depthFt(q[0],q[1]) >= minFt) return q; }
+      return null; };
+    const deepest = (c, rM) => { let best = null, bd = -1; for (let r = 0; r <= rM; r += 100) for (let k=0;k<(r?16:1);k++){ const a = k*Math.PI/8, q = [c[0]+Math.sin(a)*r/111320, c[1]+Math.cos(a)*r/(111320*Math.cos(c[0]*Math.PI/180))], d = depthFt(q[0],q[1]); if (d != null && d > bd){ bd = d; best = q; } } return best || c; };
+    GA.inlets.forEach(([nm, la, ln]) => { if (!inBox([la, ln])) return; const c = deepest([la, ln], 1500);
+      push('pass', nm, c, {poly:circle(c[0],c[1],450)}, {structure:'Sound entrance between barrier islands; strong tidal flow, rips and deep holes along the bars'}); });
+    GA.reefGroups.forEach(([nm, la, ln, n]) => { if (!inBox([la, ln])) return;
+      push('reef', nm, [la, ln], {poly:circle(la, ln, 400, 12)}, {depth:'Offshore', structure:`Georgia DNR offshore reef: ${n} mapped structures (vessels, barges, reef balls, concrete)`, gps:`${la.toFixed(5)}, ${ln.toFixed(5)}`}); });
+    GA.inshore.forEach(([nm, la, ln]) => { if (!inBox([la, ln])) return;
+      push('reef', nm+' inshore reef', [la, ln], {poly:circle(la, ln, 120, 12)}, {depth:'Inshore', structure:'Georgia DNR inshore reef in a sound or river', gps:`${la.toFixed(5)}, ${ln.toFixed(5)}`}); });
+    GA.reefs.concat(GA.inshore).forEach(([nm, la, ln]) => { if (!inBox([la, ln])) return;
+      OV.reefs.addLayer(L.circleMarker([la, ln], {pane:'habitat', radius:5, color:'#08161a', weight:1.5, fillColor:'#ff8a3d', fillOpacity:1}).bindPopup(`<b>${esc(nm)}</b><br>Georgia DNR artificial reef<br>${la.toFixed(5)}, ${ln.toFixed(5)}`)); });
+    const seenBr = [];
+    nbi.forEach(f => { const p = f.properties || {}, c0 = [f.geometry.coordinates[1], f.geometry.coordinates[0]];
+      if (seenBr.some(q => distKm(q, c0) < 0.25)) return; seenBr.push(c0); // twin spans count once
+      const c = water(c0, 3, 150); if (!c) return; const over = tc(String(p.FEATURES_DESC_006A||'').replace(/\s+/g,' ')), road = tc(String(p.FACILITY_CARRIED_007||'').replace(/\s+/g,' '));
+      push('bridge', over ? `${road || 'Bridge'} over ${over}` : 'Bridge near '+nearName(c), c, {poly:circle(c[0],c[1],90,12)}, {depth:`${Math.round(depthFt(c[0],c[1]))} ft near the span (approx.)`}); });
+    GA.marinas.forEach(([nm, la, ln]) => { if (!inBox([la, ln]) || !nm || /yacht club|condo|private/i.test(nm)) return; const c = water([la, ln], 1, 150); if (!c) return;
+      push('dock', nm, c, {poly:circle(c[0],c[1],60,12)}, {structure:'Marina docks and pilings; shade by day, lights at night'}); });
+  }
   // hard bottom overlay
   hb1.concat(hb2).flatMap(f => ringsOf(f.geometry)).forEach(r => OV.hardbottom.addLayer(L.polygon(r, {pane:'habitat', color:'#d9b3ff', weight:.8, fillColor:'#c48cff', fillOpacity:.38, interactive:false})));
   // register
@@ -888,7 +928,7 @@ function tideTurns(id, d){ // highs and lows on day d
 const FACTORS = [['tide','Tide',35,'#5aa9ff'],['wind','Wind',25,'#ff8a3d'],['moon','Moon',20,'#c48cff'],['light','Light',20,'#ffd23d']];
 const SP_TEMP = { // ideal water temperature band, °F, and where the bite shuts down
   'Snook':[70,84,60], 'Redfish':[66,82,52], 'Speckled trout':[60,76,50], 'Flounder':[58,74,48], 'Sheepshead':[55,72,48], 'Black drum':[58,76,48],
-  'Mangrove snapper':[72,86,62], 'Spanish mackerel':[70,84,64], 'Gag grouper':[62,78,54], 'Black sea bass':[54,70,46]
+  'Mangrove snapper':[72,86,62], 'Spanish mackerel':[70,84,64], 'Gag grouper':[62,78,54], 'Black sea bass':[54,70,46], 'Spadefish':[68,84,60], 'Cobia':[68,84,62]
 };
 const SPOT_BONUS = {pass:'Passes funnel bait and fish through one place.', dropoff:'Edges hold fish on most tides.', bridge:'Bridges hold fish in almost any condition.',
   flat:'Mapped flat with room to find fish.', mangrove:'Mangrove edges hold fish most of the year.', oyster:'Shell bars hold bait and fish.', reef:'Structure holds fish year round.', dock:'Docks hold fish but see a lot of pressure.'};
@@ -1301,8 +1341,8 @@ async function go(text, magicKey){
     let loc = null, label = text.split(',').slice(0,2).join(',');
     try { const j = await getJSON(`${GEO}/findAddressCandidates?SingleLine=${encodeURIComponent(text)}${magicKey?'&magicKey='+encodeURIComponent(magicKey):''}&f=json&maxLocations=1&searchExtent=${EXT}&countryCode=USA`); const c0 = (j.candidates||[])[0]; if (c0) loc = [c0.location.y, c0.location.x]; } catch(e){}
     if (!loc){ const j = await getJSON(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&limit=1&countrycodes=us&viewbox=${FL.w},${FL.n},${FL.e},${FL.s}&bounded=1`); if (j[0]) { loc = [+j[0].lat, +j[0].lon]; label = j[0].display_name.split(',').slice(0,2).join(','); } }
-    if (!loc) return toast('No match in Florida. Try a city or landmark name.');
-    if (loc[0] < FL.s-.3 || loc[0] > FL.n+.3 || loc[1] < FL.w-.5 || loc[1] > FL.e+.6) return toast('That place is outside Florida. Spotcast covers Florida waters.');
+    if (!loc) return toast('No match in Florida or Georgia. Try a city, lake or landmark name.');
+    if (loc[0] < FL.s-.3 || loc[0] > FL.n+.3 || loc[1] < FL.w-.5 || loc[1] > FL.e+.6) return toast('That place is outside Florida and Georgia. Spotcast covers waters in both states.');
     openSearch(false); placeName = label; selectZone(null); map.setView(loc, 13);
   } catch(e){ toast('Search is unavailable right now. Check your connection and try again.'); }
 }
@@ -1333,7 +1373,7 @@ document.addEventListener('visibilitychange', () => { if (!me) return; document.
 function locate(){
   if (!navigator.geolocation) return toast('Location is not available in this browser.');
   const go = p => { $('locate').classList.remove('busy'); const {latitude:la, longitude:ln} = p.coords; showMe(p); watchMe();
-    if (la < FL.s-.3 || la > FL.n+.3 || ln < FL.w-.5 || ln > FL.e+.6) return toast('You are outside Florida. Search a Florida city instead.');
+    if (la < FL.s-.3 || la > FL.n+.3 || ln < FL.w-.5 || ln > FL.e+.6) return toast('You are outside Florida and Georgia. Search a city in either state instead.');
     placeName = 'My location'; selectZone(null); map.setView([la, ln], Math.max(map.getZoom(), 14)); };
   // a fix from the last minute is good enough to center on right away
   if (meLast && Date.now() - meLast.timestamp < 60000) return go(meLast);
@@ -1410,6 +1450,7 @@ function crashNote(){
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(()=>{}); });
   crashNote(); crumb();
   try { STATIONS = await getJSON('stations.json'); } catch(e){}
+  await GA_READY;
   const v = store.get('sz3-view', null) || (store.get('sz2-place', null) ? Object.assign({z:13}, store.get('sz2-place')) : {lat:27.632, lng:-82.72, z:13, name:'Fort De Soto, FL'});
   placeName = v.name || null;
   map.setView([v.lat, v.lng], Math.max(11, v.z || 13));
