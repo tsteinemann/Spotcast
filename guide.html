@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08161a">
+<title>Spotcast lake guide</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap">
+<style>
+:root{--sea:#08161a;--panel:#0f2025;--raised:#132c33;--line:#24414a;--fg:#e9f3f1;--muted:#93aeab;--accent:#62d8c7;--accent-soft:#123f3d;--on-accent:#06211d;
+  --water:#163a45;--land:#0c1d22;--display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;--body:Barlow,system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--sea);color:var(--fg);font:15px/22px var(--body)}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:max(16px,env(safe-area-inset-top,0px)) 48px;display:grid;gap:22px}
+h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance}
+h1{font-size:clamp(32px,6vw,52px);line-height:1;letter-spacing:-.01em}
+h2{font-size:23px;line-height:27px}
+p{margin:0;max-width:65ch}
+a{color:var(--accent)}
+.label{font:600 12px/16px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.back{display:inline-flex;align-items:center;gap:6px;font:600 15px/20px var(--display);color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:7px 14px 7px 10px}
+.back svg{width:16px;height:16px}
+select{font:600 16px/20px var(--display);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 34px 8px 12px;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 55%,calc(100% - 12px) 55%;background-size:6px 6px;background-repeat:no-repeat}
+header{display:grid;gap:8px}
+header .type{color:var(--muted)}
+.months{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.months::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;font:600 15px/20px var(--display);padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.chip:focus-visible,.zonebtn:focus-visible,select:focus-visible,.back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cond{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.cond div{background:var(--panel);padding:12px 14px;display:grid;gap:3px;align-content:start}
+.cond b{font:700 21px/25px var(--display);font-variant-numeric:tabular-nums}
+.cond small{font-size:13px;line-height:18px;color:var(--muted)}
+.main{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px;align-items:start}
+@media (max-width:860px){.main{grid-template-columns:minmax(0,1fr)}}
+.mapbox{background:var(--land);border:1px solid var(--line);border-radius:20px;padding:10px;position:relative}
+.mapbox svg{display:block;width:100%;height:auto;max-height:78vh}
+.panel{display:grid;gap:14px;min-width:0}
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.sp{display:grid;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:18px}
+.src{justify-self:start;font:600 12px/16px var(--display);letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.src.r{border-color:var(--accent);color:var(--accent)}
+.doing{font-size:16px;line-height:24px}
+.list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.zonebtn{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start;width:100%;text-align:left;background:transparent;border:1px solid var(--line);border-radius:12px;padding:9px 11px;color:var(--fg);font:inherit;cursor:pointer}
+.zonebtn[aria-current="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.badge{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;font:700 14px/1 var(--display);background:var(--accent);color:var(--on-accent)}
+.badge.t{background:transparent;border:2px solid var(--accent);color:var(--accent)}
+.zonebtn b{font-family:var(--display);font-size:17px;line-height:21px;display:block}
+.zonebtn .t2{font-size:14px;line-height:20px;color:var(--muted)}
+.how{display:grid;gap:7px;margin:0;padding-left:18px}
+.how li::marker{color:var(--accent)}
+.how strong{font-weight:600}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
+@media (max-width:860px){.two{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:18px;display:grid;gap:12px;min-width:0;align-content:start}
+.card svg{width:100%;height:auto;display:block}
+.note{font-size:13px;line-height:19px;color:var(--muted)}
+.day{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));position:relative}
+.day::before{content:"";position:absolute;left:0;right:0;top:9px;height:2px;background:var(--line)}
+.day div{display:grid;gap:3px;align-content:start;padding-right:12px;position:relative}
+.day div::before{content:"";width:12px;height:12px;border-radius:999px;background:var(--accent);margin:4px 0 8px}
+.day b{font:700 17px/21px var(--display)}
+.day p{font-size:14px;line-height:20px;color:var(--muted)}
+@media (max-width:640px){.day{grid-template-columns:minmax(0,1fr);gap:12px}.day::before{display:none}}
+.look{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.look div{border-top:2px solid var(--accent);padding-top:9px;display:grid;gap:3px}
+.look b{font:700 17px/21px var(--display)}
+.look p{font-size:14px;line-height:20px;color:var(--muted)}
+.foot{display:grid;gap:8px;font-size:13px;line-height:19px;color:var(--muted)}
+.foot ul{margin:0;padding-left:18px;display:grid;gap:3px}
+.zone{transition:opacity .2s}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);align-items:center}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.dot{width:14px;height:14px;border-radius:999px;background:var(--accent);display:inline-block}
+.dot.t{background:transparent;border:2px solid var(--accent)}
+.err{padding:24px;border:1px solid var(--line);border-radius:14px}
+@media (prefers-reduced-motion:reduce){.zone{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="top">
+    <a class="back" href="./" id="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Spotcast map</a>
+    <label class="label" for="lakeSel" style="display:flex;gap:8px;align-items:center">Lake <select id="lakeSel"></select></label>
+  </div>
+  <header>
+    <span class="label">Lake guide</span>
+    <h1 id="title">Loading…</h1>
+    <p class="type" id="type"></p>
+  </header>
+  <div class="months" role="group" aria-label="Month" id="months"></div>
+  <section class="cond" id="cond" aria-label="Conditions this month"></section>
+  <section class="main">
+    <div class="mapbox"><svg id="map" role="img" aria-label="Lake map with target areas"></svg></div>
+    <div class="panel">
+      <div class="tabs" role="group" aria-label="Species" id="tabs"></div>
+      <div class="legend"><span><i class="dot"></i>From guide reports</span><span><i class="dot t"></i>Typical pattern</span></div>
+      <div class="sp" id="sp" aria-live="polite"></div>
+    </div>
+  </section>
+  <section class="two">
+    <div class="card"><span class="label">Where they sit</span><h2>The water column</h2><svg id="column" role="img" aria-label="Depth bands by species"></svg><p class="note">Typical depths for this time of year. Dashed bands are near the surface.</p></div>
+    <div class="card"><span class="label">A day on the water</span><h2>When each bite turns on</h2><div class="day" id="day"></div><span class="label">What to look for</span><div class="look" id="look"></div></div>
+  </section>
+  <footer class="foot" id="foot"></footer>
+</div>
+<script>
+(() => {
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTH_NOTE = ['Coldest water of the year. Slow down and fish deep.','Late winter. A warm spell starts the move toward pre-spawn.','Pre-spawn. Warm afternoons pull fish shallow.','Spawn around the full moon. Crappie and bass go shallow.','Bait spawns on hard banks at first light.','Fish slide toward summer depths.','The lake stratifies. Deep fish bite best early.','Hottest water. Fish early and deep.','Late summer. Schooling starts as the nights cool.','Turnover begins as the water reaches the mid 60s.','Turnover. A strong schooling bite follows it.','Lake finishing turnover. Fish move toward winter spots.'];
+  const $ = id => document.getElementById(id), NS = 'http://www.w3.org/2000/svg';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+  const el = (n, a = {}) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const qs = new URLSearchParams(location.search);
+  const st = { lake: qs.get('lake') || 'lanier', m: qs.has('m') ? Math.min(11, Math.max(0, (+qs.get('m') || 1) - 1)) : new Date().getMonth(), sp: 'all', sel: -1 };
+  let C = null, L = null;
+  const cache = {};
+  const getJSON = u => cache[u] || (cache[u] = fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }));
+
+  function setUrl(){ const u = new URL(location.href); u.searchParams.set('lake', st.lake); u.searchParams.set('m', st.m + 1); history.replaceState(null, '', u); }
+
+  async function boot(){
+    try { C = await getJSON('guides/common.json'); } catch(e){ $('title').textContent = 'Lake guides are not available offline yet'; return; }
+    $('lakeSel').innerHTML = C.lakes.map(([s, n]) => `<option value="${s}">${esc(n)}</option>`).join('');
+    if (!C.lakes.some(l => l[0] === st.lake)) st.lake = C.lakes[0][0];
+    $('lakeSel').value = st.lake;
+    $('lakeSel').onchange = e => { st.lake = e.target.value; st.sp = 'all'; st.sel = -1; load(); };
+    $('months').innerHTML = MONTHS.map((m, i) => `<button class="chip" type="button" data-m="${i}">${m}</button>`).join('');
+    $('months').querySelectorAll('.chip').forEach(b => b.onclick = () => { st.m = +b.dataset.m; st.sel = -1; render(); });
+    load();
+  }
+  async function load(){
+    try { L = await getJSON(`guides/${st.lake}.json`); } catch(e){ $('title').textContent = 'Could not load this lake. Check your connection and try again.'; return; }
+    document.title = `${L.short} lake guide · Spotcast`;
+    
+    drawMap(); render();
+  }
+  const period = () => L.months[st.m];
+
+  function drawMap(){
+    const m = L.map, svg = $('map'), pad = 30;
+    svg.setAttribute('viewBox', `${-pad} ${-pad} ${m.w + pad * 2} ${m.h + pad * 2 + 40}`);
+    svg.innerHTML = '';
+    const defs = el('defs'), cp = el('clipPath', {id:'lakeclip'}); cp.appendChild(el('path', {d:m.path, 'clip-rule':'evenodd'})); defs.appendChild(cp); svg.appendChild(defs);
+    svg.appendChild(el('path', {d:m.path, fill:'var(--water)', 'fill-rule':'evenodd', stroke:'var(--line)', 'stroke-width':1.5}));
+    svg.appendChild(el('g', {id:'zones', 'clip-path':'url(#lakeclip)'}));
+    const pl = el('g', {'font-family':'var(--display)', 'font-size':26, fill:'var(--muted)'});
+    m.places.forEach(([t, x, y, a]) => { const e = el('text', {x, y, 'text-anchor':a, stroke:'var(--land)', 'stroke-width':6, 'paint-order':'stroke'}); e.textContent = t; pl.appendChild(e); });
+    svg.appendChild(pl);
+    svg.appendChild(el('g', {id:'badges'}));
+    // scale bar: 2 miles
+    const km = m.km, len = 3.2187 * km, sb = el('g', {fill:'var(--muted)', 'font-family':'var(--display)', 'font-size':22});
+    const bx = m.w - len, by = m.h + pad + 22;
+    sb.appendChild(el('line', {x1:bx, y1:by, x2:bx + len, y2:by, stroke:'var(--muted)', 'stroke-width':3}));
+    const t1 = el('text', {x:bx - 12, y:by + 7, 'text-anchor':'end'}); t1.textContent = '2 miles · Not for navigation'; sb.appendChild(t1);
+    svg.appendChild(sb);
+  }
+  function zonesNow(){ const p = period(); return L.zones.filter(z => z.p.includes(p)); }
+  function render(){
+    setUrl();
+    const p = period(), T = L.temps[st.m], pname = C.periods[p];
+    $('title').textContent = `${L.name} in ${['January','February','March','April','May','June','July','August','September','October','November','December'][st.m]}`;
+    $('type').textContent = L.type;
+    $('months').querySelectorAll('.chip').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.m === st.m)));
+    $('cond').innerHTML = `<div><span class="label">Typical water</span><b>About ${T}°F</b><small>Surface temperature for this month; check your graph.</small></div>
+      <div><span class="label">Pattern</span><b>${esc(pname)}</b><small>${esc(MONTH_NOTE[st.m])}</small></div>
+      <div><span class="label">Lake level</span><b>${esc(L.pool.split(';')[0])}</b><small>${esc(L.pool.split(';')[1] || '')}${L.gauge ? (L.pool.includes(';') ? '. ' : '') + 'Live level on the lake card in Spotcast.' : ''}</small></div>`;
+    // tabs
+    const sps = L.species;
+    if (st.sp !== 'all' && !sps.some(s => s[0] === st.sp)) st.sp = 'all';
+    $('tabs').innerHTML = `<button class="chip" type="button" data-sp="all" aria-pressed="${st.sp === 'all'}">All</button>` + sps.map(([k, n]) => `<button class="chip" type="button" data-sp="${k}" aria-pressed="${st.sp === k}">${esc(n)}</button>`).join('');
+    $('tabs').querySelectorAll('.chip').forEach(b => b.onclick = () => { st.sp = b.dataset.sp; st.sel = -1; render(); });
+    paintZones(); panel(); column(); dayLook(); foot();
+  }
+  function visible(){ const zs = zonesNow(); return st.sp === 'all' ? zs : zs.filter(z => z.sp === st.sp); }
+  function paintZones(){
+    const zg = $('zones'), bg = $('badges'); zg.innerHTML = ''; bg.innerHTML = '';
+    const vis = visible(), r0 = Math.max(L.map.w, L.map.h) / 1000;
+    vis.forEach((z, i) => {
+      const hot = st.sel === i, g = el('g', {class:'zone', opacity: hot ? .8 : (st.sp === 'all' ? .35 : .5)});
+      z.c.forEach(([x, y, r]) => g.appendChild(el('circle', {cx:x, cy:y, r:r * r0, fill:'var(--accent)'}))); zg.appendChild(g);
+    });
+    vis.forEach((z, i) => {
+      const [x, y] = z.c[0], b = el('g', {transform:`translate(${x} ${y})`, style:'cursor:pointer', role:'button', tabindex:0, 'aria-label':`${i + 1}. ${z.name}`});
+      const rep = z.src === 'r';
+      b.appendChild(el('circle', {r:26 * r0, fill: rep ? 'var(--accent)' : 'var(--land)', stroke: rep ? 'var(--land)' : 'var(--accent)', 'stroke-width':5 * r0}));
+      const t = el('text', {y:9 * r0, 'text-anchor':'middle', 'font-family':'var(--display)', 'font-weight':700, 'font-size':26 * r0, fill: rep ? 'var(--on-accent)' : 'var(--accent)'}); t.textContent = i + 1; b.appendChild(t);
+      const tt = el('title'); tt.textContent = `${z.name}: ${z.t}`; b.appendChild(tt);
+      const go = () => { st.sel = st.sel === i ? -1 : i; paintZones(); panel(); };
+      b.addEventListener('click', go); b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
+      bg.appendChild(b);
+    });
+  }
+  function panel(){
+    const p = period(), box = $('sp'), vis = visible(), spName = k => (L.species.find(s => s[0] === k) || [k, k])[1];
+    const zlist = vis.map((z, i) => `<li><button class="zonebtn" type="button" data-i="${i}" aria-current="${st.sel === i}"><span class="badge ${z.src === 'r' ? '' : 't'}">${i + 1}</span><span><b>${esc(z.name)}</b><span class="t2">${st.sp === 'all' ? esc(spName(z.sp)) + '. ' : ''}${esc(z.t)}</span></span></button></li>`).join('');
+    if (st.sp === 'all'){
+      box.innerHTML = `<span class="label">${esc(C.periods[p])} on ${esc(L.short)}</span><h2>What the fish are doing</h2>
+        <ul class="list" style="gap:12px">${L.species.map(([k, n]) => { const d = L.periods[p][k]; return `<li><b style="font-family:var(--display);font-size:17px">${esc(n)}.</b> <span>${esc(d.doing)}</span></li>`; }).join('')}</ul>
+        <span class="label">Where to fish</span>${vis.length ? `<ul class="list">${zlist}</ul>` : '<p class="note">No mapped areas for this month yet.</p>'}`;
+    } else {
+      const d = L.periods[p][st.sp];
+      box.innerHTML = `<span class="src ${d.src}">${d.src === 'r' ? 'From guide reports' : 'Typical pattern for this kind of lake'}</span><h2>${esc(spName(st.sp))}</h2><p class="doing">${esc(d.doing)}</p>
+        <span class="label">Where to fish</span>${vis.length ? `<ul class="list">${zlist}</ul>` : '<p class="note">No mapped areas for this species this month.</p>'}
+        <span class="label">How to fish it</span><ul class="how">${d.how.map(([a, b]) => `<li><strong>${esc(a)}:</strong> ${esc(b)}</li>`).join('')}</ul>`;
+    }
+    box.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const i = +b.dataset.i; st.sel = st.sel === i ? -1 : i; paintZones(); panel(); });
+  }
+  function column(){
+    const p = period(), svg = $('column'), cols = L.species.map(([k, n]) => [n, L.periods[p][k].bands || []]);
+    const deepest = Math.max(10, ...cols.flatMap(c => c[1].map(b => b[1]))), D = deepest <= 30 ? 30 : deepest <= 50 ? 50 : deepest <= 70 ? 70 : 100;
+    const step = D <= 30 ? 10 : D <= 50 ? 10 : D <= 70 ? 10 : 20, W = 560, Lm = 54, T = 16, H = 320;
+    svg.setAttribute('viewBox', `0 0 ${W} ${T + H + 40}`); svg.innerHTML = '';
+    const y = d => T + d / D * H;
+    for (let d = 0; d <= D; d += step){ svg.appendChild(el('line', {x1:Lm, x2:W - 6, y1:y(d), y2:y(d), stroke:'var(--line)'})); const t = el('text', {x:Lm - 8, y:y(d) + 4, 'text-anchor':'end', 'font-size':13, fill:'var(--muted)', 'font-family':'var(--body)'}); t.textContent = d + ' ft'; svg.appendChild(t); }
+    const cw = (W - 6 - Lm) / cols.length;
+    cols.forEach(([name, bands], k) => { const x0 = Lm + k * cw + 6, w = cw - 12;
+      const h = el('text', {x:x0 + w / 2, y:T + H + 26, 'text-anchor':'middle', 'font-size':14, 'font-weight':700, fill:'var(--fg)', 'font-family':'var(--display)'}); h.textContent = name.length > 18 ? name.split(' ')[0] : name; svg.appendChild(h);
+      bands.forEach(([a, b, l1, l2]) => { const hh = Math.max(y(b) - y(a), 18);
+        svg.appendChild(el('rect', {x:x0, y:y(a), width:w, height:hh, rx:6, fill:'var(--accent-soft)', stroke:'var(--accent)', 'stroke-width':1.5, 'stroke-dasharray': a === 0 ? '5 3' : 'none'}));
+        const lines = [l1, l2].filter(Boolean), fits = hh >= 14 + lines.length * 14;
+        (fits ? lines : [l1]).forEach((ln, j) => { const t = el('text', {x:x0 + 7, y:y(a) + 15 + j * 14, 'font-size':12, fill:'var(--fg)', 'font-family':'var(--body)'}); t.textContent = ln; svg.appendChild(t); });
+      });
+    });
+  }
+  function dayLook(){
+    const p = period();
+    $('day').innerHTML = C.day[p].map(([a, b]) => `<div><b>${esc(a)}</b><p>${esc(b)}</p></div>`).join('');
+    $('look').innerHTML = C.look[p].map(([a, b]) => `<div><b>${esc(a)}</b><p>${esc(b)}</p></div>`).join('');
+  }
+  function foot(){
+    $('foot').innerHTML = `<span class="label">Sources</span><ul>${L.sources.map(([t, u]) => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join('')}
+      <li>Lake outline and creek names © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>. Areas are approximate; typical patterns fill months without a guide report.</li></ul>`;
+  }
+  $('back').addEventListener('click', e => { if (document.referrer && new URL(document.referrer).origin === location.origin && history.length > 1){ e.preventDefault(); history.back(); } });
+  boot();
+})();
+</script>
+</body>
+</html>

@@ -6,6 +6,10 @@ Spotcast is an installable web app for Florida and Georgia anglers. Pan anywhere
 
 The map also has radar (last hour, looped), NOAA nautical charts, tidal current and wind arrows that follow the hour on the timeline, water temperature at NOAA stations, and bait and tackle shops.
 
+## Lake guides
+
+`guide.html` is a month-by-month field guide for ten Georgia lakes: Lanier, Allatoona, Hartwell, West Point, Walter F. George, Oconee, Sinclair, Clarks Hill (Thurmond), Russell and Carters. Each guide shows what stripers, hybrids, bass, crappie (and walleye on Carters) are doing that month, target areas on the lake map, how to fish them, the water column and what to look for. Areas and patterns marked "From guide reports" come from published monthly reports; the rest are the typical pattern for that kind of lake. Open a guide from the lake card or a lake spot, or go to `guide.html?lake=lanier&m=11`.
+
 ## Use it
 
 Open the GitHub Pages link on your phone:
@@ -28,6 +32,7 @@ All data is public and fetched live from the phone:
 - FWC inlets and passes, oyster beds, tidal flats, mangroves, marinas and docks, artificial reefs, and hard bottom
 - FDOT and local bridge locations; the National Bridge Inventory for Georgia
 - Georgia DNR offshore and inshore artificial reefs (GPX master lists), Georgia sound entrances, OpenStreetMap ramps and marinas in Georgia
+- Lake guides: OpenStreetMap lake outlines and creek names; monthly guide reports from GON, Carolina Sportsman, AHQ, Lakeside News and others, listed on each guide
 - Esri World Imagery, reference labels and geocoder; OpenStreetMap Nominatim as backup search
 
 ## Files
@@ -39,6 +44,7 @@ All data is public and fetched live from the phone:
 | `stations.json` | Florida NOAA tide, water-temperature and current stations |
 | `georgia.json` | Georgia sounds, DNR reefs, boat ramps and marinas |
 | `baits.json` | Florida bait and tackle shops: name, lat, lng, hours, phone, website, address, live bait, note |
+| `guide.html`, `guides/` | Lake guides: the page, plus one data file per lake (outline, seasonal patterns, target areas, sources) and `common.json` |
 | `sw.js` | Service worker: offline shell, tile and data caching |
 | `manifest.webmanifest`, `icons/` | Home screen install |
 

@@ -1232,6 +1232,12 @@ setDock(dockOpen);
 // ---- marine conditions for the area at the selected hour
 const MOON_NAMES = [[.03,'New moon'],[.22,'Waxing crescent'],[.28,'First quarter'],[.47,'Waxing gibbous'],[.53,'Full moon'],[.72,'Waning gibbous'],[.78,'Last quarter'],[.97,'Waning crescent'],[1.01,'New moon']];
 function moonName(t){ const ph = SunCalc.getMoonIllumination(new Date(t)).phase; return MOON_NAMES.find(m => ph < m[0])[1]; }
+// lake guides (guide.html): which lakes have one, matched by name
+const GUIDES = [['lanier',/lanier/i],['allatoona',/allatoona/i],['hartwell',/hartwell/i],['westpoint',/west point/i],['wfgeorge',/george|eufaula/i],['oconee',/oconee/i],['sinclair',/sinclair/i],['thurmond',/thurmond|clarks hill/i],['russell',/russell/i],['carters',/carters/i]];
+const guideFor = name => { const g = name && GUIDES.find(([, re]) => re.test(name)); return g ? g[0] : null; };
+const GUIDE_C = {lanier:[34.25,-83.95], allatoona:[34.16,-84.65], hartwell:[34.45,-82.85], westpoint:[33.0,-85.1], wfgeorge:[31.8,-85.1], oconee:[33.5,-83.3], sinclair:[33.2,-83.3], thurmond:[33.8,-82.35], russell:[34.1,-82.7], carters:[34.62,-84.65]};
+const guideNear = c => { let best = null, bd = 30; for (const k in GUIDE_C){ const d = distKm(c, GUIDE_C[k]); if (d < bd){ bd = d; best = k; } } return best; };
+const guideLink = (name, i, c) => { const g = guideFor(name) || (c ? guideNear(c) : null); return g ? `<a class="guide-btn" href="guide.html?lake=${g}&m=${new Date(HRS[i] ? HRS[i].t : Date.now()).getMonth() + 1}">Lake guide: where the fish are this month →</a>` : ''; };
 function marineHtml(i){
   if (!COND) return '';
   { const m = map.getCenter(); if (isInland([m.lat, m.lng])){ const ex = exAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i], cell = (v, l) => `<div>${v != null ? `<b>${v}</b>` : '<b>—</b>'}<span>${l}</span></div>`;
@@ -1239,7 +1245,7 @@ function marineHtml(i){
     return `<div class="mc"><div class="mc-h"><span class="eyebrow">${esc(near ? shortLake(near.name) : 'Lake')} · ${hourLabel(i)}</span><small>USGS · NWS · Open-Meteo</small></div><div class="mc-g">
       ${cell(ex.lakeT != null ? Math.round(ex.lakeT)+'°F' : null, 'Water (est.)')}${cell(lv && lv.now != null ? lv.now.toFixed(1)+' ft' : null, 'Lake level')}${cell(lv && lv.now != null ? (lv.d24 >= 0 ? '+' : '')+lv.d24.toFixed(2)+' ft' : null, 'Last 24 hours')}${cell(`${card(wd)} ${ws}`, 'Wind mph')}
       ${cell(ex.p != null ? (ex.p*0.02953).toFixed(2)+trend : null, 'Pressure inHg')}${cell(Math.round(hr.moon*100)+'%', moonName(T0+i*3600e3))}${cell(ex.vis != null ? (ex.vis >= 10 ? '10+' : ex.vis.toFixed(1))+' mi' : null, 'Visibility')}${cell((S => SEASON_NAME[S.k] + (S.turn ? ', turnover' : ''))(lakeSeason(ex.lakeT, new Date(HRS[i].t).getMonth())), 'Pattern')}
-    </div></div>`; } } const ex = exAt(i), wt = waterTempAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i];
+    </div>${guideLink(near && near.name, i, [m.lat, m.lng])}</div>`; } } const ex = exAt(i), wt = waterTempAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i];
   const dash = '<b>—</b>', cell = (val, label) => `<div>${val != null ? `<b>${val}</b>` : dash}<span>${label}</span></div>`;
   const trend = ex.dp3 == null ? '' : ex.dp3 <= -0.5 ? ' ↓' : ex.dp3 >= 0.5 ? ' ↑' : ' →';
   const sr = fmtTime(T0 + hr.sr*3600e3), ss = fmtTime(T0 + hr.ss*3600e3);
@@ -1319,7 +1325,7 @@ function paintSpot(){
       ${z.depth?`<dt>Depth</dt><dd>${esc(z.depth)}</dd>`:''}
       <dt>Structure</dt><dd>${esc(z.structure)}</dd>
       <dt>GPS</dt><dd>${coordBlock(z.c[0], z.c[1])}</dd>
-      ${z.lake ? `<dt>Lake</dt><dd>${esc(z.lake.name)}</dd>` : `<dt>Tide station</dt><dd>${esc(stName || 'None nearby')}</dd>`}
+      ${z.lake ? `<dt>Lake</dt><dd>${esc(z.lake.name)}${guideFor(z.lake.name) ? ` · <a href="guide.html?lake=${guideFor(z.lake.name)}&m=${new Date(HRS[cur].t).getMonth() + 1}">Lake guide</a>` : ''}</dd>` : `<dt>Tide station</dt><dd>${esc(stName || 'None nearby')}</dd>`}
       <dt>Species</dt><dd class="chips">${z.species.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</dd>
     </dl>
     <button class="plan-btn" type="button" id="planBtn">Game plan for ${hourLabel(cur)}</button>
