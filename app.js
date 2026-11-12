@@ -152,7 +152,11 @@ const CleanTiles = L.TileLayer.extend({
 });
 const ESRI_IMG = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const sat = L.layerGroup([
-  L.tileLayer(ESRI_IMG, {maxNativeZoom:10, maxZoom:19, zIndex:0, crossOrigin:'anonymous'}),
+  // the low-detail fill is stepped so no tile is ever blown up more than 8x: one z10 tile stretched to z18-19 is a
+  // 65,000-pixel-wide image, which makes iPhone Safari run out of memory and reload the page while zooming
+  L.tileLayer(ESRI_IMG, {maxNativeZoom:10, maxZoom:13, zIndex:0, crossOrigin:'anonymous'}),
+  new CleanTiles(ESRI_IMG, {minZoom:14, maxNativeZoom:13, maxZoom:16, zIndex:0}),
+  new CleanTiles(ESRI_IMG, {minZoom:17, maxNativeZoom:16, maxZoom:19, zIndex:0}),
   new CleanTiles(ESRI_IMG, {maxNativeZoom:18, maxZoom:19, zIndex:1, attribution:'Imagery © Esri, Maxar'}),
   ...NEWER.map(([id,w,s,e,n,mz], i) => L.tileLayer(`https://stormscdn.ngs.noaa.gov/${id}-rgb/{z}/{x}/{y}`, {bounds:[[s,w],[n,e]], minZoom:11, maxNativeZoom:mz, maxZoom:19, zIndex:2+i, attribution: i===0 ? 'NOAA NGS, City of Sarasota' : ''})),
   new ArcExport('https://srqgis.sarasotafl.gov/server/rest/services/City_Aerials_2026/MapServer/export', {bounds:[[27.27,-82.60],[27.40,-82.46]], minZoom:12, maxZoom:19, zIndex:2+NEWER.length})
@@ -440,17 +444,21 @@ const radar = {frames:[], group:L.layerGroup(), idx:RADAR_STEPS.length-1, timer:
 function buildRadar(){
   radar.group.clearLayers(); const bust = Math.floor(Date.now()/300e3);
   radar.frames = RADAR_STEPS.map(m => L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${m?'-m'+String(m).padStart(2,'0')+'m':''}/{z}/{x}/{y}.png?_=${bust}`,
-    {pane:'radar', opacity:0, maxNativeZoom:11, maxZoom:19, attribution: m===0 ? 'Radar: NEXRAD via Iowa State Mesonet' : ''}));
-  radar.frames.forEach(f => radar.group.addLayer(f)); radar.built = Date.now(); showRadarFrame(radar.idx);
+    {pane:'radar', opacity:0, maxNativeZoom:15, maxZoom:19, keepBuffer:1, updateWhenZooming:false, attribution: m===0 ? 'Radar: NEXRAD via Iowa State Mesonet' : ''}));
+  radar.built = Date.now(); showRadarFrame(radar.idx);
 }
 function showRadarFrame(k){
-  radar.idx = k; radar.frames.forEach((f,j) => f.setOpacity(j===k ? .6 : 0));
+  // only the frame on screen and the next one are on the map; eleven full tile sets at once is too much for a phone
+  radar.idx = k; const nx = (k+1) % radar.frames.length;
+  radar.frames.forEach((f,j) => { const want = j===k || j===nx; if (want && !radar.group.hasLayer(f)) radar.group.addLayer(f); else if (!want && radar.group.hasLayer(f)) radar.group.removeLayer(f); f.setOpacity(j===k ? .6 : 0); });
   const base = Math.floor(Date.now()/300e3)*300e3, t = base - RADAR_STEPS[k]*60e3;
   $('radarTime').textContent = `Radar · ${fmtTime(t)}${k===RADAR_STEPS.length-1?' · now':''}`;
   $('radarTrack').innerHTML = RADAR_STEPS.map((_,j) => `<i class="${j===k?'on':''}"></i>`).join('');
 }
 function radarTick(){ if (!radar.playing) return; const last = RADAR_STEPS.length-1; const n = radar.idx >= last ? 0 : radar.idx+1;
   showRadarFrame(n); clearTimeout(radar.timer); radar.timer = setTimeout(radarTick, n === last ? 1800 : 550); }
+map.on('movestart zoomstart', () => { if (radar.timer) { clearTimeout(radar.timer); radar.timer = null; radar.held = true; } });
+map.on('moveend', () => { if (radar.held && LS.radar){ radar.held = false; radar.timer = setTimeout(radarTick, 900); } });
 function radarOn(on){
   $('radarBar').hidden = !on; clearTimeout(radar.timer); clearInterval(radar.refresh);
   if (!on){ map.removeLayer(radar.group); return; }
