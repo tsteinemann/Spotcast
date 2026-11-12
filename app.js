@@ -1233,9 +1233,11 @@ setDock(dockOpen);
 const MOON_NAMES = [[.03,'New moon'],[.22,'Waxing crescent'],[.28,'First quarter'],[.47,'Waxing gibbous'],[.53,'Full moon'],[.72,'Waning gibbous'],[.78,'Last quarter'],[.97,'Waning crescent'],[1.01,'New moon']];
 function moonName(t){ const ph = SunCalc.getMoonIllumination(new Date(t)).phase; return MOON_NAMES.find(m => ph < m[0])[1]; }
 // lake guides (guide.html): which lakes have one, matched by name
-const GUIDES = [['lanier',/lanier/i],['allatoona',/allatoona/i],['hartwell',/hartwell/i],['westpoint',/west point/i],['wfgeorge',/george|eufaula/i],['oconee',/oconee/i],['sinclair',/sinclair/i],['thurmond',/thurmond|clarks hill/i],['russell',/russell/i],['carters',/carters/i]];
+const GUIDES = [['lanier',/lanier/i],['allatoona',/allatoona/i],['hartwell',/hartwell/i],['westpoint',/west point/i],['lakegeorge',/^lake george$/i],['wfgeorge',/walter|eufaula/i],['oconee',/oconee/i],['sinclair',/sinclair/i],['thurmond',/thurmond|clarks hill/i],['russell',/russell/i],['carters',/carters/i],
+  ['okeechobee',/okeechobee/i],['kissimmee',/^lake kissimmee$/i],['toho',/^(west )?lake toho(pekaliga)?$/i],['istokpoga',/istokpoga/i],['harris',/^(little )?lake harris$|^lake (griffin|eustis|dora|beauclair|carlton)$/i],['rodman',/rodman|ocklawaha/i],['orange',/^orange lake$|lochloosa/i],['talquin',/talquin/i],['tarpon',/^lake tarpon$/i]];
 const guideFor = name => { const g = name && GUIDES.find(([, re]) => re.test(name)); return g ? g[0] : null; };
-const GUIDE_C = {lanier:[34.25,-83.95], allatoona:[34.16,-84.65], hartwell:[34.45,-82.85], westpoint:[33.0,-85.1], wfgeorge:[31.8,-85.1], oconee:[33.5,-83.3], sinclair:[33.2,-83.3], thurmond:[33.8,-82.35], russell:[34.1,-82.7], carters:[34.62,-84.65]};
+const GUIDE_C = {lanier:[34.25,-83.95], allatoona:[34.16,-84.65], hartwell:[34.45,-82.85], westpoint:[33.0,-85.1], wfgeorge:[31.8,-85.1], oconee:[33.5,-83.3], sinclair:[33.2,-83.3], thurmond:[33.8,-82.35], russell:[34.1,-82.7], carters:[34.62,-84.65],
+  okeechobee:[26.95,-80.83], kissimmee:[27.9,-81.27], toho:[28.2,-81.4], istokpoga:[27.38,-81.29], harris:[28.78,-81.8], rodman:[29.5,-81.8], lakegeorge:[29.29,-81.6], orange:[29.47,-82.15], talquin:[30.43,-84.53], tarpon:[28.12,-82.72]};
 const guideNear = c => { let best = null, bd = 30; for (const k in GUIDE_C){ const d = distKm(c, GUIDE_C[k]); if (d < bd){ bd = d; best = k; } } return best; };
 const guideLink = (name, i, c) => { const g = guideFor(name) || (c ? guideNear(c) : null); return g ? `<a class="guide-btn" href="guide.html?lake=${g}&m=${new Date(HRS[i] ? HRS[i].t : Date.now()).getMonth() + 1}">Lake guide: where the fish are this month →</a>` : ''; };
 function marineHtml(i){

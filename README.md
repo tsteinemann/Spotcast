@@ -8,7 +8,7 @@ The map also has radar (last hour, looped), NOAA nautical charts, tidal current 
 
 ## Lake guides
 
-`guide.html` is a month-by-month field guide for ten Georgia lakes: Lanier, Allatoona, Hartwell, West Point, Walter F. George, Oconee, Sinclair, Clarks Hill (Thurmond), Russell and Carters. Each guide shows what stripers, hybrids, bass, crappie (and walleye on Carters) are doing that month, target areas on the lake map, how to fish them, the water column and what to look for. Areas and patterns marked "From guide reports" come from published monthly reports; the rest are the typical pattern for that kind of lake. Open a guide from the lake card or a lake spot, or go to `guide.html?lake=lanier&m=11`.
+`guide.html` is a month-by-month field guide for ten Georgia lakes (Lanier, Allatoona, Hartwell, West Point, Walter F. George, Oconee, Sinclair, Clarks Hill (Thurmond), Russell and Carters) and ten Florida lakes (Okeechobee, Kissimmee, Toho, Istokpoga, the Harris Chain, Rodman, Lake George, Orange and Lochloosa, Talquin and Tarpon). Each guide shows what stripers, hybrids, bass, crappie, bream (and walleye on Carters) are doing that month, target areas on the lake map, how to fish them, the water column and what to look for. Areas and patterns marked "From guide reports" come from published monthly reports; the rest are the typical pattern for that kind of lake. Open a guide from the lake card or a lake spot, or go to `guide.html?lake=lanier&m=11`.
 
 ## Use it
 
@@ -32,7 +32,7 @@ All data is public and fetched live from the phone:
 - FWC inlets and passes, oyster beds, tidal flats, mangroves, marinas and docks, artificial reefs, and hard bottom
 - FDOT and local bridge locations; the National Bridge Inventory for Georgia
 - Georgia DNR offshore and inshore artificial reefs (GPX master lists), Georgia sound entrances, OpenStreetMap ramps and marinas in Georgia
-- Lake guides: OpenStreetMap lake outlines and creek names; monthly guide reports from GON, Carolina Sportsman, AHQ, Lakeside News and others, listed on each guide
+- Lake guides: OpenStreetMap lake outlines and creek names; monthly guide reports from GON, Carolina Sportsman, AHQ, Lakeside News, FWC lake pages and others, listed on each guide
 - Esri World Imagery, reference labels and geocoder; OpenStreetMap Nominatim as backup search
 
 ## Files

@@ -1,5 +1,5 @@
-const V = 'spotcast-v32';
-const SHELL = ['./', 'index.html', 'app.js', 'planner.js', 'intro.js', 'manifest.webmanifest', 'stations.json', 'baits.json', 'georgia.json', 'guide.html', 'guides/common.json', ...['lanier','allatoona','hartwell','westpoint','wfgeorge','oconee','sinclair','thurmond','russell','carters'].map(s => `guides/${s}.json`), 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+const V = 'spotcast-v33';
+const SHELL = ['./', 'index.html', 'app.js', 'planner.js', 'intro.js', 'manifest.webmanifest', 'stations.json', 'baits.json', 'georgia.json', 'guide.html', 'guides/common.json', ...['lanier','allatoona','hartwell','westpoint','wfgeorge','oconee','sinclair','thurmond','russell','carters','okeechobee','kissimmee','toho','istokpoga','harris','rodman','lakegeorge','orange','talquin','tarpon'].map(s => `guides/${s}.json`), 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js'];
