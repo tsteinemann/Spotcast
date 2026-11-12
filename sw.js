@@ -1,4 +1,4 @@
-const V = 'spotcast-v31';
+const V = 'spotcast-v32';
 const SHELL = ['./', 'index.html', 'app.js', 'planner.js', 'intro.js', 'manifest.webmanifest', 'stations.json', 'baits.json', 'georgia.json', 'guide.html', 'guides/common.json', ...['lanier','allatoona','hartwell','westpoint','wfgeorge','oconee','sinclair','thurmond','russell','carters'].map(s => `guides/${s}.json`), 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',

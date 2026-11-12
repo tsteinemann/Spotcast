@@ -41,7 +41,20 @@ header .type{color:var(--muted)}
 .cond small{font-size:13px;line-height:18px;color:var(--muted)}
 .main{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px;align-items:start}
 @media (max-width:860px){.main{grid-template-columns:minmax(0,1fr)}}
-.mapbox{background:var(--land);border:1px solid var(--line);border-radius:20px;padding:10px;position:relative}
+.mapbox{background:var(--land);border:1px solid var(--line);border-radius:20px;padding:10px;position:relative;scroll-margin-top:130px;overflow:hidden}
+.filters{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--sea);margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));padding:8px max(16px,env(safe-area-inset-left,0px)) 10px;display:grid;gap:8px;border-bottom:1px solid transparent;transition:border-color .2s}
+.filters.stuck{border-bottom-color:var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--sea);z-index:30}
+#tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+#tabs::-webkit-scrollbar{display:none}
+#map{touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:grab}
+#map.zoomed{touch-action:none}
+#map.dragging{cursor:grabbing}
+.zoombar{position:absolute;right:16px;top:16px;display:grid;gap:6px;z-index:2}
+.zoombar button{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font:700 22px/1 var(--display);display:grid;place-items:center;cursor:pointer}
+.zoombar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zoombar button[hidden]{display:none}
+.hint{position:absolute;left:16px;bottom:14px;font-size:12px;color:var(--muted);pointer-events:none}
 .mapbox svg{display:block;width:100%;height:auto;max-height:78vh}
 .panel{display:grid;gap:14px;min-width:0}
 .tabs{display:flex;flex-wrap:wrap;gap:8px}
@@ -97,12 +110,16 @@ header .type{color:var(--muted)}
     <h1 id="title">Loading…</h1>
     <p class="type" id="type"></p>
   </header>
-  <div class="months" role="group" aria-label="Month" id="months"></div>
+  <div class="filters" id="filters">
+    <div class="months" role="group" aria-label="Month" id="months"></div>
+    <div class="tabs" role="group" aria-label="Species" id="tabs"></div>
+  </div>
   <section class="cond" id="cond" aria-label="Conditions this month"></section>
   <section class="main">
-    <div class="mapbox"><svg id="map" role="img" aria-label="Lake map with target areas"></svg></div>
+    <div class="mapbox" id="mapbox"><svg id="map" role="img" aria-label="Lake map with target areas"></svg>
+      <div class="zoombar"><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zout" aria-label="Zoom out">−</button><button type="button" id="zreset" aria-label="Show the whole lake" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>
+      <span class="hint" id="hint">Pinch or use + to zoom. Tap a number to zoom in.</span></div>
     <div class="panel">
-      <div class="tabs" role="group" aria-label="Species" id="tabs"></div>
       <div class="legend"><span><i class="dot"></i>From guide reports</span><span><i class="dot t"></i>Typical pattern</span></div>
       <div class="sp" id="sp" aria-live="polite"></div>
     </div>
@@ -121,19 +138,24 @@ header .type{color:var(--muted)}
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
   const el = (n, a = {}) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
   const qs = new URLSearchParams(location.search);
-  const st = { lake: qs.get('lake') || 'lanier', m: qs.has('m') ? Math.min(11, Math.max(0, (+qs.get('m') || 1) - 1)) : new Date().getMonth(), sp: 'all', sel: -1 };
+  const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k, v){ try { localStorage.setItem(k, v); } catch(e){} } };
+  const st = { lake: qs.get('lake') || 'lanier', m: qs.has('m') ? Math.min(11, Math.max(0, (+qs.get('m') || 1) - 1)) : new Date().getMonth(), pref: qs.get('sp') || store.get('sc-guide-sp') || 'all', sp: 'all', sel: -1 };
+  // a species choice carries across lakes: the same key, else the same kind of fish
+  const FAMILY = {stripers:'striper', linesides:'striper', hybrids:'striper', spots:'bass', bass:'bass', crappie:'crappie', walleye:'walleye'};
+  const pickSp = () => { if (st.pref === 'all') return 'all'; const keys = L.species.map(s => s[0]);
+    if (keys.includes(st.pref)) return st.pref; const f = FAMILY[st.pref]; return keys.find(k => FAMILY[k] === f) || 'all'; };
   let C = null, L = null;
   const cache = {};
   const getJSON = u => cache[u] || (cache[u] = fetch(u).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }));
 
-  function setUrl(){ const u = new URL(location.href); u.searchParams.set('lake', st.lake); u.searchParams.set('m', st.m + 1); history.replaceState(null, '', u); }
+  function setUrl(){ const u = new URL(location.href); u.searchParams.set('lake', st.lake); u.searchParams.set('m', st.m + 1); if (st.sp !== 'all') u.searchParams.set('sp', st.sp); else u.searchParams.delete('sp'); history.replaceState(null, '', u); }
 
   async function boot(){
     try { C = await getJSON('guides/common.json'); } catch(e){ $('title').textContent = 'Lake guides are not available offline yet'; return; }
     $('lakeSel').innerHTML = C.lakes.map(([s, n]) => `<option value="${s}">${esc(n)}</option>`).join('');
     if (!C.lakes.some(l => l[0] === st.lake)) st.lake = C.lakes[0][0];
     $('lakeSel').value = st.lake;
-    $('lakeSel').onchange = e => { st.lake = e.target.value; st.sp = 'all'; st.sel = -1; load(); };
+    $('lakeSel').onchange = e => { st.lake = e.target.value; st.sel = -1; load(); };
     $('months').innerHTML = MONTHS.map((m, i) => `<button class="chip" type="button" data-m="${i}">${m}</button>`).join('');
     $('months').querySelectorAll('.chip').forEach(b => b.onclick = () => { st.m = +b.dataset.m; st.sel = -1; render(); });
     load();
@@ -142,7 +164,7 @@ header .type{color:var(--muted)}
     try { L = await getJSON(`guides/${st.lake}.json`); } catch(e){ $('title').textContent = 'Could not load this lake. Check your connection and try again.'; return; }
     document.title = `${L.short} lake guide · Spotcast`;
     
-    drawMap(); render();
+    st.sp = pickSp(); drawMap(); render();
   }
   const period = () => L.months[st.m];
 
@@ -153,8 +175,8 @@ header .type{color:var(--muted)}
     const defs = el('defs'), cp = el('clipPath', {id:'lakeclip'}); cp.appendChild(el('path', {d:m.path, 'clip-rule':'evenodd'})); defs.appendChild(cp); svg.appendChild(defs);
     svg.appendChild(el('path', {d:m.path, fill:'var(--water)', 'fill-rule':'evenodd', stroke:'var(--line)', 'stroke-width':1.5}));
     svg.appendChild(el('g', {id:'zones', 'clip-path':'url(#lakeclip)'}));
-    const pl = el('g', {'font-family':'var(--display)', 'font-size':26, fill:'var(--muted)'});
-    m.places.forEach(([t, x, y, a]) => { const e = el('text', {x, y, 'text-anchor':a, stroke:'var(--land)', 'stroke-width':6, 'paint-order':'stroke'}); e.textContent = t; pl.appendChild(e); });
+    const pl = el('g', {id:'places', 'font-family':'var(--display)', fill:'var(--muted)'});
+    m.places.forEach(([t, x, y, a]) => { const e = el('text', {x, y, 'text-anchor':a, stroke:'var(--land)', 'paint-order':'stroke'}); e.textContent = t; pl.appendChild(e); });
     svg.appendChild(pl);
     svg.appendChild(el('g', {id:'badges'}));
     // scale bar: 2 miles
@@ -163,7 +185,55 @@ header .type{color:var(--muted)}
     sb.appendChild(el('line', {x1:bx, y1:by, x2:bx + len, y2:by, stroke:'var(--muted)', 'stroke-width':3}));
     const t1 = el('text', {x:bx - 12, y:by + 7, 'text-anchor':'end'}); t1.textContent = '2 miles · Not for navigation'; sb.appendChild(t1);
     svg.appendChild(sb);
+    BASE = [-pad, -pad, m.w + pad * 2, m.h + pad * 2 + 40]; VB = BASE.slice(); applyVB();
   }
+  // ---- map zoom and pan: pinch, drag, ctrl/trackpad wheel, buttons; tapping a zone zooms to it
+  let BASE = [0, 0, 1, 1], VB = BASE, moved = false, anim = 0;
+  const zk = () => BASE[2] / VB[2];
+  function clampVB(v){ const k = Math.min(8, Math.max(1, BASE[2] / v[2])), w = BASE[2] / k, h = BASE[3] / k;
+    const cx = Math.min(BASE[0] + BASE[2] - w / 2, Math.max(BASE[0] + w / 2, v[0] + v[2] / 2)), cy = Math.min(BASE[1] + BASE[3] - h / 2, Math.max(BASE[1] + h / 2, v[1] + v[3] / 2));
+    return [cx - w / 2, cy - h / 2, w, h]; }
+  function applyVB(){
+    const svg = $('map'); svg.setAttribute('viewBox', VB.map(v => v.toFixed(1)).join(' '));
+    const k = zk(), zoomed = k > 1.02; svg.classList.toggle('zoomed', zoomed); $('zreset').hidden = !zoomed; $('hint').hidden = zoomed;
+    const pl = $('places'); if (pl){ pl.setAttribute('font-size', 26 / k); pl.setAttribute('stroke-width', 6 / k); }
+    document.querySelectorAll('.badge-g').forEach(b => b.setAttribute('transform', `translate(${b.dataset.x} ${b.dataset.y}) scale(${1 / k})`));
+  }
+  function zoomAt(f, cx, cy){ const w = VB[2] / f, h = VB[3] / f; VB = clampVB([cx - (cx - VB[0]) / f, cy - (cy - VB[1]) / f, w, h]); applyVB(); }
+  function animateTo(t){ t = clampVB(t); cancelAnimationFrame(anim);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches){ VB = t; applyVB(); return; }
+    const s0 = VB.slice(), t0 = performance.now(), D = 320;
+    const step = now => { const u = Math.min(1, (now - t0) / D), e = 1 - Math.pow(1 - u, 3); VB = s0.map((v, i) => v + (t[i] - v) * e); applyVB(); if (u < 1) anim = requestAnimationFrame(step); };
+    anim = requestAnimationFrame(step); }
+  function zoomToZone(z){ let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, r0 = Math.max(L.map.w, L.map.h) / 1000;
+    z.c.forEach(([x, y, r]) => { x0 = Math.min(x0, x - r * r0); y0 = Math.min(y0, y - r * r0); x1 = Math.max(x1, x + r * r0); y1 = Math.max(y1, y + r * r0); });
+    const pad = 0.6, w = (x1 - x0) * (1 + pad * 2), h = (y1 - y0) * (1 + pad * 2), aspect = BASE[2] / BASE[3];
+    let W = Math.max(w, h * aspect, BASE[2] / 5), H = W / aspect; const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    animateTo([cx - W / 2, cy - H / 2, W, H]); }
+  function selectZone(i, fromList){
+    const was = st.sel === i; st.sel = was ? -1 : i; paintZones(); panel();
+    if (!was){ zoomToZone(visible()[i]); if (fromList){ const box = $('mapbox'), r = box.getBoundingClientRect(); if (r.top < 120 || r.bottom > innerHeight) box.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'}); } }
+  }
+  function svgPt(e){ const svg = $('map'), r = svg.getBoundingClientRect(), s = Math.max(VB[2] / r.width, VB[3] / r.height);
+    const ox = (r.width - VB[2] / s) / 2, oy = (r.height - VB[3] / s) / 2; return [VB[0] + (e.clientX - r.left - ox) * s, VB[1] + (e.clientY - r.top - oy) * s, s]; }
+  (() => {
+    const svg = $('map'), P = new Map(); let last = null, pinch0 = null;
+    svg.addEventListener('pointerdown', e => { P.set(e.pointerId, e); moved = false; last = e; if (P.size === 2){ const [a, b] = [...P.values()]; pinch0 = {d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), vb: VB.slice()}; } });
+    svg.addEventListener('pointermove', e => { if (!P.has(e.pointerId)) return; P.set(e.pointerId, e);
+      if (P.size === 2 && pinch0){ const [a, b] = [...P.values()], d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), mid = {clientX:(a.clientX + b.clientX) / 2, clientY:(a.clientY + b.clientY) / 2};
+        const f = d / pinch0.d / (pinch0.vb[2] / VB[2]), [mx, my] = svgPt(mid); if (Math.abs(f - 1) > 0.002){ zoomAt(f, mx, my); moved = true; } e.preventDefault(); return; }
+      if (P.size === 1 && last && zk() > 1.02){ const dx = e.clientX - last.clientX, dy = e.clientY - last.clientY;
+        if (moved || Math.hypot(dx, dy) > 6){ if (!moved){ moved = true; svg.setPointerCapture(e.pointerId); svg.classList.add('dragging'); } const s = svgPt(e)[2]; VB = clampVB([VB[0] - dx * s, VB[1] - dy * s, VB[2], VB[3]]); applyVB(); last = e; } } });
+    const up = e => { P.delete(e.pointerId); if (P.size < 2) pinch0 = null; if (!P.size){ svg.classList.remove('dragging'); setTimeout(() => moved = false, 0); } };
+    svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up); svg.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') up(e); });
+    svg.addEventListener('wheel', e => { if (!e.ctrlKey && !e.metaKey && zk() <= 1.02) return; e.preventDefault(); const [x, y] = svgPt(e); zoomAt(Math.exp(-e.deltaY * 0.0025), x, y); }, {passive:false});
+    svg.addEventListener('dblclick', e => { const [x, y] = svgPt(e); zoomAt(2, x, y); });
+    const centre = () => [VB[0] + VB[2] / 2, VB[1] + VB[3] / 2];
+    $('zin').onclick = () => { const [x, y] = centre(); animateTo(clampVB([x - VB[2] / 4, y - VB[3] / 4, VB[2] / 2, VB[3] / 2])); };
+    $('zout').onclick = () => { const [x, y] = centre(); animateTo(clampVB([x - VB[2], y - VB[3], VB[2] * 2, VB[3] * 2])); };
+    $('zreset').onclick = () => animateTo(BASE.slice());
+    const f = $('filters'); new IntersectionObserver(([en]) => f.classList.toggle('stuck', en.intersectionRatio < 1), {threshold:[1], rootMargin:'-1px 0px 0px 0px'}).observe(f);
+  })();
   function zonesNow(){ const p = period(); return L.zones.filter(z => z.p.includes(p)); }
   function render(){
     setUrl();
@@ -171,14 +241,16 @@ header .type{color:var(--muted)}
     $('title').textContent = `${L.name} in ${['January','February','March','April','May','June','July','August','September','October','November','December'][st.m]}`;
     $('type').textContent = L.type;
     $('months').querySelectorAll('.chip').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.m === st.m)));
+    { const mb = $('months').querySelector('[aria-pressed="true"]'), row = $('months'); if (mb) row.scrollLeft = mb.offsetLeft - row.clientWidth / 2 + mb.offsetWidth / 2; }
     $('cond').innerHTML = `<div><span class="label">Typical water</span><b>About ${T}°F</b><small>Surface temperature for this month; check your graph.</small></div>
       <div><span class="label">Pattern</span><b>${esc(pname)}</b><small>${esc(MONTH_NOTE[st.m])}</small></div>
       <div><span class="label">Lake level</span><b>${esc(L.pool.split(';')[0])}</b><small>${esc(L.pool.split(';')[1] || '')}${L.gauge ? (L.pool.includes(';') ? '. ' : '') + 'Live level on the lake card in Spotcast.' : ''}</small></div>`;
     // tabs
     const sps = L.species;
-    if (st.sp !== 'all' && !sps.some(s => s[0] === st.sp)) st.sp = 'all';
+    if (st.sp !== 'all' && !sps.some(s => s[0] === st.sp)) st.sp = pickSp();
     $('tabs').innerHTML = `<button class="chip" type="button" data-sp="all" aria-pressed="${st.sp === 'all'}">All</button>` + sps.map(([k, n]) => `<button class="chip" type="button" data-sp="${k}" aria-pressed="${st.sp === k}">${esc(n)}</button>`).join('');
-    $('tabs').querySelectorAll('.chip').forEach(b => b.onclick = () => { st.sp = b.dataset.sp; st.sel = -1; render(); });
+    $('tabs').querySelectorAll('.chip').forEach(b => b.onclick = () => { st.sp = st.pref = b.dataset.sp; store.set('sc-guide-sp', st.pref); st.sel = -1; render(); });
+    const on = $('tabs').querySelector('[aria-pressed="true"]'); if (on) on.scrollIntoView({block:'nearest', inline:'nearest'});
     paintZones(); panel(); column(); dayLook(); foot();
   }
   function visible(){ const zs = zonesNow(); return st.sp === 'all' ? zs : zs.filter(z => z.sp === st.sp); }
@@ -190,12 +262,12 @@ header .type{color:var(--muted)}
       z.c.forEach(([x, y, r]) => g.appendChild(el('circle', {cx:x, cy:y, r:r * r0, fill:'var(--accent)'}))); zg.appendChild(g);
     });
     vis.forEach((z, i) => {
-      const [x, y] = z.c[0], b = el('g', {transform:`translate(${x} ${y})`, style:'cursor:pointer', role:'button', tabindex:0, 'aria-label':`${i + 1}. ${z.name}`});
+      const [x, y] = z.c[0], b = el('g', {class:'badge-g', 'data-x':x, 'data-y':y, transform:`translate(${x} ${y}) scale(${1 / zk()})`, style:'cursor:pointer', role:'button', tabindex:0, 'aria-label':`${i + 1}. ${z.name}`});
       const rep = z.src === 'r';
       b.appendChild(el('circle', {r:26 * r0, fill: rep ? 'var(--accent)' : 'var(--land)', stroke: rep ? 'var(--land)' : 'var(--accent)', 'stroke-width':5 * r0}));
       const t = el('text', {y:9 * r0, 'text-anchor':'middle', 'font-family':'var(--display)', 'font-weight':700, 'font-size':26 * r0, fill: rep ? 'var(--on-accent)' : 'var(--accent)'}); t.textContent = i + 1; b.appendChild(t);
       const tt = el('title'); tt.textContent = `${z.name}: ${z.t}`; b.appendChild(tt);
-      const go = () => { st.sel = st.sel === i ? -1 : i; paintZones(); panel(); };
+      const go = () => { if (moved) return; selectZone(i, false); };
       b.addEventListener('click', go); b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
       bg.appendChild(b);
     });
@@ -213,7 +285,7 @@ header .type{color:var(--muted)}
         <span class="label">Where to fish</span>${vis.length ? `<ul class="list">${zlist}</ul>` : '<p class="note">No mapped areas for this species this month.</p>'}
         <span class="label">How to fish it</span><ul class="how">${d.how.map(([a, b]) => `<li><strong>${esc(a)}:</strong> ${esc(b)}</li>`).join('')}</ul>`;
     }
-    box.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const i = +b.dataset.i; st.sel = st.sel === i ? -1 : i; paintZones(); panel(); });
+    box.querySelectorAll('[data-i]').forEach(b => b.onclick = () => selectZone(+b.dataset.i, true));
   }
   function column(){
     const p = period(), svg = $('column'), cols = L.species.map(([k, n]) => [n, L.periods[p][k].bands || []]);
