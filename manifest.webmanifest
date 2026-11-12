@@ -1,7 +1,7 @@
 {
   "name": "Spotcast",
   "short_name": "Spotcast",
-  "description": "The forecast for where to fish: Florida spots rated hourly from live tides, wind, moon and light.",
+  "description": "The forecast for where to fish: Florida and Georgia spots, coast and lakes, rated hourly.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

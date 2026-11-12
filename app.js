@@ -84,7 +84,9 @@ const TYPES = {
   mangrove: {label:'Mangroves',     pref:'incoming', deep:false, shelter:true,  wind:'shel', base:3, depth:'1–4 ft at the edge', structure:'Mangrove shoreline; high water pushes fish up under the roots'},
   oyster:   {label:'Oyster bars',   pref:'incoming', deep:false, shelter:true,  wind:'shel', base:3, depth:'1–4 ft', structure:'Mapped oyster bars with shell edges and drop-offs'},
   dock:     {label:'Docks',         pref:'moving',   deep:true,  shelter:true,  wind:'shel', base:1, depth:'Varies; deeper dock ends', structure:'Docks and seawalls; shade by day, lights at night'},
-  reef:     {label:'Reef',          pref:'moving',   deep:true,  shelter:false, wind:'reef', base:3, depth:'', structure:'Man-made reef'}
+  reef:     {label:'Reef',          pref:'moving',   deep:true,  shelter:false, wind:'reef', base:3, depth:'', structure:'Man-made reef'},
+  point:    {label:'Point',         pref:'lake',     deep:true,  shelter:false, wind:'point', base:4, depth:'Drops from shallow to deep', structure:'Lake point: shallow flat that tapers into deeper water; bait and bass move up and down it'},
+  cove:     {label:'Cove',          pref:'lake',     deep:false, shelter:true,  wind:'shel', base:2, depth:'Shallow pocket', structure:'Cove or pocket off the main lake: spawning flats in spring, shad push in during fall'}
 };
 function speciesFor(type, lat, lng){
   if (inGAcoast(lat, lng)){ // Georgia: no snook; trout, reds and flounder inshore, sea bass and sheepshead on the reefs
@@ -287,8 +289,9 @@ const contours = new ContourLayer({minZoom:11, maxZoom:19, pane:'habitat'});
 
 // ---------------- layers panel
 // spot types the user wants on the map (drop-offs start off: there are many and they crowd the other spots)
-const TYPE_CHIPS = [['pass','Passes'],['bridge','Bridges'],['flat','Flats'],['mangrove','Mangroves'],['oyster','Oyster bars'],['dock','Docks'],['reef','Reefs'],['dropoff','Drop-offs']];
+const TYPE_CHIPS = [['pass','Passes'],['bridge','Bridges'],['flat','Flats'],['mangrove','Mangroves'],['oyster','Oyster bars'],['dock','Docks'],['reef','Reefs'],['dropoff','Drop-offs'],['point','Lake points'],['cove','Lake coves']];
 const SHOW = new Set(store.get('sz3-types', TYPE_CHIPS.map(t => t[0]).filter(k => k !== 'dropoff')));
+['point','cove'].forEach(k => { if (!store.get('sc-lake-types', false)) SHOW.add(k); }); store.set('sc-lake-types', true); // new lake types start on
 function paintTypeChips(){
   $('typeChips').innerHTML = TYPE_CHIPS.map(([k,l]) => `<button type="button" data-k="${k}" aria-pressed="${SHOW.has(k)}">${l}</button>`).join('');
   $('typeChips').querySelectorAll('button').forEach(b => b.onclick = () => { const k = b.dataset.k; SHOW.has(k) ? SHOW.delete(k) : SHOW.add(k); store.set('sz3-types', [...SHOW]);
@@ -603,15 +606,94 @@ const ringsOf = g => !g ? [] : (g.type==='Polygon' ? [g.coordinates] : g.type===
 const linesOf = g => !g ? [] : (g.type==='LineString' ? [g.coordinates] : g.type==='MultiLineString' ? g.coordinates : []).map(l => l.map(([x,y]) => [y,x]));
 function nearName(c){ // "near Jupiter Inlet" from the closest tide station
   let best = null, bd = 1e9; for (const s of STATIONS.tide){ const d = (s[1]-c[0])**2 + ((s[2]-c[1])*0.9)**2; if (d < bd){ bd = d; best = s; } }
+  if (bd > 0.16){ // inland: the nearest lake we know about, then the nearest named ramp
+    let L = null, ld = 30; for (const x of LAKES.values()){ const d = distKm(c, x.c); if (d < ld){ ld = d; L = x; } } if (L) return shortLake(L.name);
+    const r = nearRamp(c, 25); if (r) return r; return c[0] > 30.7 && c[1] > -85.6 ? 'Georgia' : 'Florida'; }
   return best ? best[3].split(',')[0].replace(/\s*\(.*?\)\s*/g,' ').trim() : 'Florida';
 }
 
 const CELL = 0.1, cellsDone = new Set(), cellsBusy = new Set();
 const cellKey = (lat,lng) => Math.floor(lat/CELL)+':'+Math.floor(lng/CELL);
+// ---------------- lakes (inland Georgia and Florida): spots from lake outlines (USGS National Hydrography Dataset),
+// bridges from the National Bridge Inventory, marinas; rated on season, water temperature, lake level, wind, moon and light
+const NHD = 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/12';
+const LAKES = new Map();   // NHD objectid -> {name, rings:[outer, ...holes], box, c, gauge}
+const LAKE_GAUGES = [[/lanier/i,'02334400',1071],[/allatoona/i,'02393500',840],[/west point/i,'02339400',635],[/walter f\.? george|eufaula/i,'02343240',190],[/carters/i,'02381400',1074]];
+const LEVELS = new Map();  // USGS site -> {now, d24, d72, full, t} | {loading} | {failed}
+const isInland = c => !STATIONS.tide.some(st => Math.abs(st[1]-c[0]) < 0.5 && Math.abs(st[2]-c[1]) < 0.6 && distKm(c, [st[1], st[2]]) < 45);
+function ensureLevel(g){
+  if (!g || LEVELS.has(g[0])) return; LEVELS.set(g[0], {loading:true});
+  getJSON(`https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${g[0]}&parameterCd=00062,62614,62615&period=P4D`).then(j => {
+    const ts = (j.value && j.value.timeSeries || []).find(t => t.values[0].value.length); if (!ts) throw 0;
+    const v = ts.values[0].value.map(x => ({t:Date.parse(x.dateTime), v:+x.value})).filter(x => !isNaN(x.v)), last = v[v.length-1];
+    const ago = h => { const t = last.t - h*3600e3; let b = v[0]; for (const x of v) if (Math.abs(x.t-t) < Math.abs(b.t-t)) b = x; return last.v - b.v; };
+    LEVELS.set(g[0], {now:last.v, d24:ago(24), d72:ago(72), full:g[2], t:last.t}); SCORE.clear(); refreshSoon();
+  }).catch(() => LEVELS.set(g[0], {failed:true}));
+}
+const lakeLevel = z => z.lake && z.lake.gauge ? LEVELS.get(z.lake.gauge[0]) : null;
+function inLake(L, p){ const pip = (p, ring) => { let ins = false; for (let i=0, j=ring.length-1; i<ring.length; j=i++){ const a=ring[i], b=ring[j]; if ((a[0]>p[0]) !== (b[0]>p[0]) && p[1] < (b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0]) + a[1]) ins = !ins; } return ins; };
+  if (p[0] < L.box[0] || p[0] > L.box[2] || p[1] < L.box[1] || p[1] > L.box[3]) return false;
+  if (!pip(p, L.rings[0])) return false; for (let k=1;k<L.rings.length;k++) if (pip(p, L.rings[k])) return false; return true; }
+const shortLake = n => String(n||'the lake').replace(/^Lake\s+Sidney\s+Lanier$/i,'Lake Lanier').replace(/^Walter F\.? George Lake$/i,'Lake Walter F. George');
+function nearRamp(c, km=4){ let best = null, bd = km; for (const r of (GA.places||[]).concat(GA.ramps||[])){ if (!r[0]) continue; const d = distKm(c, [r[1], r[2]]); if (d < bd){ bd = d; best = r[0]; } } return best && best.replace(/\s*(boat\s*)?(ramp|launch|landing)\s*$/i,'').replace(/\s*-\s*Lake .*$/i,'').trim(); }
+async function lakeSpots(s, w, bb, inBox){
+  const feats = await query(NHD, [w-0.02, s-0.02, w+CELL+0.02, s+CELL+0.02], {where:'areasqkm >= 1.5 AND ftype IN (390,436)', outFields:'gnis_name,areasqkm,objectid', maxAllowableOffset:'0.0002', geometryPrecision:'5'});
+  feats.forEach(f => { const p = f.properties||{}, id = p.OBJECTID ?? p.objectid; if (LAKES.has(id)) return;
+    const polys = ringsOf(f.geometry); if (!polys.length) return; const poly = polys.sort((a,b) => b[0].length - a[0].length)[0];
+    let a0=90,a1=-90,n0=180,n1=-180, sa=0, sn=0; for (const q of poly[0]){ a0=Math.min(a0,q[0]); a1=Math.max(a1,q[0]); n0=Math.min(n0,q[1]); n1=Math.max(n1,q[1]); sa+=q[0]; sn+=q[1]; }
+    const name = p.GNIS_NAME || p.gnis_name || 'Lake', g = LAKE_GAUGES.find(x => x[0].test(name));
+    LAKES.set(id, {id, name, rings:poly, box:[a0,n0,a1,n1], c:[sa/poly[0].length, sn/poly[0].length], gauge: g ? [g[1], null, g[2]] : null, area:p.AREASQKM||p.areasqkm||0});
+    if (g) ensureLevel([g[1], null, g[2]]); });
+  const lakes = [...LAKES.values()].filter(L => L.box[2] >= s && L.box[0] <= s+CELL && L.box[3] >= w && L.box[1] <= w+CELL);
+  const out = [], mk = (type, name, c, geom, L, extra={}) => { const id = type+':'+c[0].toFixed(4)+','+c[1].toFixed(4); if (ZONE_IDS.has(id) || !inBox(c)) return; ZONE_IDS.add(id);
+    out.push(Object.assign({id, type, name, c, geom, species:lakeSpecies(type, L), lake:{name:shortLake(L.name), id:L.id, gauge:L.gauge}}, TYPES[type], extra)); };
+  const off = (p, dx, dy, m) => [p[0] + dy*m/111320, p[1] + dx*m/(111320*Math.cos(p[0]*Math.PI/180))];
+  for (const L of lakes){
+    // walk every shoreline (outer edge and islands) every ~120 m and measure how much water surrounds each point
+    const samples = [];
+    L.rings.forEach(ring => { for (let i=0;i<ring.length-1;i++){ const A = ring[i], B = ring[i+1], n = Math.max(1, Math.round(distKm(A,B)/0.12));
+      for (let k=0;k<n;k++){ const p = [A[0]+(B[0]-A[0])*k/n, A[1]+(B[1]-A[1])*k/n]; if (!inBox(p)) continue;
+        let wet = 0, vx = 0, vy = 0; for (let d=0; d<16; d++){ const a = d*Math.PI/8, dx = Math.cos(a), dy = Math.sin(a); for (const r of [130, 260]) if (inLake(L, off(p, dx, dy, r))){ wet++; vx += dx; vy += dy; } }
+        const len = Math.hypot(vx, vy) || 1; samples.push({p, frac: wet/32, dx: vx/len, dy: vy/len}); } } });
+    const pick = (list, minKm, max) => { const kept = []; for (const x of list){ if (kept.length >= max) break; if (kept.every(k => distKm(k.p, x.p) >= minKm)) kept.push(x); } return kept; };
+    const label = c => { const r = nearRamp(c, 2.5); return r ? `near ${r}` : `on ${shortLake(L.name)}`; };
+    pick(samples.filter(x => x.frac >= 0.62).sort((a,b) => b.frac - a.frac), 0.7, 8).forEach(x => { const c = off(x.p, x.dx, x.dy, 70);
+      if (inLake(L, c)) mk('point', `Point ${label(c)}`, c, {poly:circle(c[0], c[1], 140, 14)}, L); });
+    pick(samples.filter(x => x.frac <= 0.27 && x.frac >= 0.09).sort((a,b) => a.frac - b.frac), 0.9, 4).forEach(x => { const c = off(x.p, x.dx, x.dy, 60);
+      if (inLake(L, c)) mk('cove', `Cove ${label(c)}`, c, {poly:circle(c[0], c[1], 150, 14)}, L); });
+  }
+  // bridges that cross a lake, and marinas on one
+  if (lakes.length){
+    const br = await query(SRC.nbi, bb, {where:"SERVICE_UND_042B IN ('5','6','7','8','9') AND STRUCTURE_LEN_MT_049 >= 40", outFields:'FEATURES_DESC_006A,FACILITY_CARRIED_007'}); const seen = [];
+    br.forEach(f => { const p = f.properties||{}, c = [f.geometry.coordinates[1], f.geometry.coordinates[0]]; if (seen.some(q => distKm(q, c) < 0.3)) return;
+      const L = lakes.find(L => inLake(L, c) || [0,1,2,3].some(k => inLake(L, off(c, Math.cos(k*Math.PI/2), Math.sin(k*Math.PI/2), 60)))); if (!L) return; seen.push(c);
+      const road = tc(String(p.FACILITY_CARRIED_007||'').replace(/\s+/g,' ')); mk('bridge', `${road || 'Bridge'} bridge, ${shortLake(L.name)}`, c, {poly:circle(c[0], c[1], 110, 12)}, L, {depth:'Channel under the span', structure:'Bridge pilings and riprap; the channel swing under the span holds bait, crappie and bass'}); });
+    (GA.marinas||[]).forEach(([nm, la, ln]) => { if (!nm || !inBox([la, ln])) return; const L = lakes.find(L => [0,1,2,3,4,5,6,7].some(k => inLake(L, off([la,ln], Math.cos(k*Math.PI/4), Math.sin(k*Math.PI/4), 150)))); if (!L) return;
+      let c = [la, ln]; if (!inLake(L, c)) for (let k=0;k<8;k++){ const q = off([la,ln], Math.cos(k*Math.PI/4), Math.sin(k*Math.PI/4), 150); if (inLake(L, q)){ c = q; break; } }
+      mk('dock', nm, c, {poly:circle(c[0], c[1], 80, 12)}, L, {structure:'Marina docks: shade, brush and lights; crappie and spots hold under the slips'}); });
+  }
+  return out;
+}
+function lakeSpecies(type, L){
+  const n = (L && L.name) || '', spots = /lanier|allatoona|carters|hartwell|burton|chatuge|nottely|blue ridge|rabun/i.test(n), stripers = /lanier|allatoona|hartwell|thurmond|clarks hill|russell|west point|seminole|carters/i.test(n);
+  const bass = spots ? ['Spotted bass','Largemouth bass'] : ['Largemouth bass'];
+  switch (type){
+    case 'point': return bass.concat(stripers ? ['Striped bass'] : [], ['Crappie']);
+    case 'cove': return ['Largemouth bass','Crappie','Bream'];
+    case 'bridge': return ['Crappie'].concat(bass, stripers ? ['Striped bass'] : []);
+    default: return ['Crappie'].concat(bass, ['Bream']);
+  }
+}
 async function loadCell(key){
   if (cellsDone.has(key) || cellsBusy.has(key)) return; cellsBusy.add(key); setLoading();
   const [iy, ix] = key.split(':').map(Number), s = iy*CELL, w = ix*CELL, bb = [w, s, w+CELL, s+CELL];
   const inBox = c => c[0]>=s && c[0]<s+CELL && c[1]>=w && c[1]<w+CELL;
+  if (isInland([s+CELL/2, w+CELL/2])){ // inland: lakes only, no tides or coastal habitat
+    let add = []; try { add = await lakeSpots(s, w, bb, inBox); } catch(e){}
+    cellsBusy.delete(key); cellsDone.add(key);
+    add.forEach(z => { z.k = ZONES.length; ZONES.push(z); drawZone(z); });
+    setLoading(); refresh(); return;
+  }
   const simp = {maxAllowableOffset:'0.00004', geometryPrecision:'5', outFields:'OBJECTID'};
   // depth tiles for the cell plus a 2 km margin (z13)
   const PAD = 0.02, tx0 = Math.floor(lng2t(w-PAD,13)), tx1 = Math.floor(lng2t(w+CELL+PAD,13)), ty0 = Math.floor(lat2t(s+CELL+PAD,13)), ty1 = Math.floor(lat2t(s-PAD,13)), tiles = [];
@@ -876,16 +958,19 @@ async function loadExtras(c){
   const ll = `latitude=${c[0].toFixed(3)}&longitude=${c[1].toFixed(3)}`;
   const idx = j => { const m = new Map(); (j && j.hourly ? j.hourly.time : []).forEach((t,k) => m.set(Date.parse(t+':00Z'), k)); return m; };
   const [fc, mr] = await Promise.all([
-    getJSON(`https://api.open-meteo.com/v1/forecast?${ll}&hourly=pressure_msl,cloud_cover,visibility&timezone=GMT&past_days=1&forecast_days=8`).catch(() => null),
+    getJSON(`https://api.open-meteo.com/v1/forecast?${ll}&hourly=pressure_msl,cloud_cover,visibility,temperature_2m&temperature_unit=fahrenheit&timezone=GMT&past_days=7&forecast_days=8`).catch(() => null),
     getJSON(`https://marine-api.open-meteo.com/v1/marine?${ll}&hourly=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,swell_wave_direction,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&length_unit=imperial&timezone=GMT&forecast_days=8&cell_selection=sea`).catch(() => null)]);
   const fi = idx(fc), mi = idx(mr), num = v => v == null || isNaN(v) ? null : +v;
   const at = (j, m, key, t) => { if (!j) return null; const k = m.get(Math.round(t/3600e3)*3600e3); return k == null ? null : num(j.hourly[key][k]); };
+  // lake surface temperature tracks the last five days of air temperature closely enough to pick the season's pattern
+  const airAvg = t => { if (!fc) return null; let sum = 0, n = 0; for (let h = 0; h < 120; h += 3){ const v = at(fc,fi,'temperature_2m', t - h*3600e3); if (v != null){ sum += v; n++; } } return n >= 10 ? sum/n : null; };
   return HRS.map(({t}) => {
+    const lakeT = airAvg(t);
     const p = at(fc,fi,'pressure_msl',t), p3 = at(fc,fi,'pressure_msl',t-3*3600e3), vis = at(fc,fi,'visibility',t), cv = at(mr,mi,'ocean_current_velocity',t), sst = at(mr,mi,'sea_surface_temperature',t);
     return {p, dp3: p != null && p3 != null ? p - p3 : null, cloud: at(fc,fi,'cloud_cover',t), vis: vis == null ? null : vis/1609.34,
       wh: at(mr,mi,'wave_height',t), wp: at(mr,mi,'wave_period',t), wdir: at(mr,mi,'wave_direction',t),
       sh: at(mr,mi,'swell_wave_height',t), sp: at(mr,mi,'swell_wave_period',t), sdir: at(mr,mi,'swell_wave_direction',t),
-      cv: cv == null ? null : cv/1.852, cd: at(mr,mi,'ocean_current_direction',t), sst: sst == null ? null : sst*9/5+32};
+      cv: cv == null ? null : cv/1.852, cd: at(mr,mi,'ocean_current_direction',t), sst: sst == null ? null : sst*9/5+32, lakeT: lakeT == null ? null : lakeT + 2};
   });
 }
 const exAt = i => (COND && COND.ex && COND.ex[i]) || {};
@@ -923,6 +1008,32 @@ function tideTurns(id, d){ // highs and lows on day d
 }
 
 // ---------------- scoring
+// ---- lake factor (35): where fish are this time of year, from estimated water temperature and the month, plus lake level
+function lakeSeason(T, month){
+  if (T == null) T = [52,54,58,65,72,79,83,84,80,72,62,55][month];
+  const fall = month >= 8 && month <= 11;
+  if (T < 50) return {k:'winter', txt:`About ${Math.round(T)}°F water: winter pattern. Fish hold deep on steep points, bluffs and bridge channels and feed slowly.`};
+  if (T < 58) return fall ? {k:'latefall', txt:`About ${Math.round(T)}°F water and cooling: late fall. Bait balls up on main-lake points and creek mouths.`} : {k:'prespawn', txt:`About ${Math.round(T)}°F water and warming: pre-spawn. Fish stage on secondary points heading into coves.`};
+  if (T < 70) return fall ? {k:'fall', txt:`About ${Math.round(T)}°F water and cooling: fall. Shad push into the backs of creeks and coves and bass follow.`} : {k:'spawn', txt:`About ${Math.round(T)}°F water: spawn. Bass and crappie move shallow into protected coves and pockets.`};
+  if (T < 80) return {k:'postspawn', txt:`About ${Math.round(T)}°F water: post-spawn into early summer. Fish move out to points, docks and the first drop.`};
+  return {k:'summer', txt:`About ${Math.round(T)}°F water: summer. Fish go deep on main-lake points and humps; early and late are best.`};
+}
+const SEASON_FIT = { // [point, cove, bridge, dock] out of 30
+  winter:[24,8,26,18], prespawn:[27,22,22,22], spawn:[18,30,18,26], postspawn:[28,16,22,25], summer:[27,9,23,22], fall:[22,30,22,22], latefall:[28,16,24,20] };
+function lakeFactor(z, i){
+  const ex = exAt(i), month = new Date(HRS[i].t).getMonth(), S = lakeSeason(ex.lakeT, month), col = {point:0, cove:1, bridge:2, dock:3}[z.type] ?? 0;
+  let val = SEASON_FIT[S.k][col], why = S.txt, sign = val >= 24 ? 2 : val >= 18 ? 1 : -1;
+  const fits = val >= 24 ? ` ${z.label}s fit that pattern well.` : val < 18 ? ` ${z.label}s are off the main pattern right now.` : '';
+  const lv = lakeLevel(z);
+  if (lv && lv.now != null){ const d = lv.d24;
+    if (d > 0.15 && !z.deep){ val += 5; why += ` Lake up ${d.toFixed(1)} ft in a day: rising water floods new cover and pulls fish shallow.`; }
+    else if (d > 0.15){ val += 2; why += ` Lake up ${d.toFixed(1)} ft in a day.`; }
+    else if (d < -0.15 && !z.deep){ val -= 4; why += ` Lake down ${Math.abs(d).toFixed(1)} ft in a day: falling water pulls fish off the bank.`; }
+    else if (d < -0.15){ val += 2; why += ` Lake falling ${Math.abs(d).toFixed(1)} ft a day, which pulls fish out to points and channels.`; }
+    else val += 1;
+  } else val += 1;
+  return {val: clamp(val, 4, 35), why:[sign, why + fits]};
+}
 // Four core factors make the base (tide 35, wind 25, moon 20, light 20 = 100), then small extras add or take
 // points: spot type, pressure trend, water temperature for the main species, seas, sky and storms.
 const FACTORS = [['tide','Tide',35,'#5aa9ff'],['wind','Wind',25,'#ff8a3d'],['moon','Moon',20,'#c48cff'],['light','Light',20,'#ffd23d']];
@@ -939,7 +1050,8 @@ function score(k, i){
   // ---- tide (35)
   let tide = 14, tideWhy = [-1,'No tide prediction nearby yet, so this rating leans on wind, moon and light.'], r = 0, v = null, cur = null, swing = null;
   const h = z.st ? tideH(z.st) : null, cv = z.cs ? curV(z.cs) : null;
-  if (h){
+  if (z.lake){ const L = lakeFactor(z, i); tide = L.val; tideWhy = L.why; }
+  else if (h){
     v = h[i]; r = (h[Math.min(i+1,H-1)] - h[Math.max(i-1,0)])/2;
     let mag = Math.abs(r), dir = r>0?'incoming':'outgoing', s = Math.min(1, mag/0.22), slack = mag < 0.04;
     if (cv && cv[i] != null){ // a nearby current station beats the tide-height slope for moving water
@@ -961,7 +1073,9 @@ function score(k, i){
   // ---- wind (25)
   const [ws, wd] = COND.wx[i];
   let wind, windWhy;
-  if (z.wind==='shel'){ wind = ws>14 ? 25 : 21; windWhy = [ws>14?1:0, `Protected water, so the ${ws} mph ${card(wd)} wind matters less.`]; }
+  if (z.wind==='point'){ const good = ws >= 5 && ws <= 15, calm = ws < 4; wind = good ? 25 : calm ? 15 : ws > 22 ? 11 : 19;
+    windWhy = good ? [1, `A ${ws} mph ${card(wd)} wind pushes bait onto wind-blown points. Fish the side the wind hits.`] : calm ? [-1, 'Calm water. Fish are easier to spook; go deeper or use finesse baits.'] : [ws > 22 ? -2 : -1, `${ws} mph ${card(wd)} wind. Rough on open water; fish points out of the worst of it.`]; }
+  else if (z.wind==='shel'){ wind = ws>14 ? 25 : 21; windWhy = [ws>14?1:0, `Protected water, so the ${ws} mph ${card(wd)} wind matters less.`]; }
   else if (z.wind==='reef'){ const pen = clamp((ws-8)/10,0,1); wind = 25*(1-pen); windWhy = pen>.6 ? [-2, `${ws} mph ${card(wd)} wind. Rough for running offshore.`] : pen>.25 ? [-1, `${ws} mph ${card(wd)} wind. Expect a bumpy ride out.`] : [1, `Light ${card(wd)} wind. Good conditions to run out and anchor.`]; }
   else if (z.wind==='flat'){ const pen = clamp((ws-10)/10,0,1)*0.7, calm = ws <= 2 ? 0.25 : 0; wind = 25*(1-pen-calm);
     windWhy = pen>.35 ? [-1, `${ws} mph ${card(wd)} wind will muddy a shallow flat. Work the lee side.`] : calm ? [-1, 'Slick calm. Easy to spot fish, harder to fool them. Use long casts and light lures.'] : [1, `A ${ws} mph ${card(wd)} breeze is workable on the flat.`]; }
@@ -980,7 +1094,7 @@ function score(k, i){
     {k:'wind', val:wind, why: windWhy[1]},
     {k:'moon', val:hr.sol, why: moonTxt},
     {k:'light', val:light, why: lightWhy ? lightWhy[1] : 'Mid-day light on deeper water. Fish hold near bottom and structure.'}
-  ].map(x => Object.assign(x, {label: FACTORS.find(F => F[0]===x.k)[1], max: FACTORS.find(F => F[0]===x.k)[2], color: FACTORS.find(F => F[0]===x.k)[3]}));
+  ].map(x => Object.assign(x, {label: z.lake && x.k==='tide' ? 'Lake' : FACTORS.find(F => F[0]===x.k)[1], max: FACTORS.find(F => F[0]===x.k)[2], color: FACTORS.find(F => F[0]===x.k)[3]}));
   const base = f.reduce((a,x) => a + x.val, 0);
   // ---- extras
   const extras = [];
@@ -993,7 +1107,7 @@ function score(k, i){
       : [0, 'Pressure steady.'];
     extras.push({k:'pressure', label:'Pressure', pts:e[0] - (ex.p > 1024 && e[0] >= 0 ? 1 : 0), why: e[1] + (ex.p ? ` ${(ex.p*0.02953).toFixed(2)} inHg.` : '')}); }
   const wt = waterTempAt(i), sp = (z.species||[]).find(n => SP_TEMP[n]);
-  if (wt != null && sp){ const [lo, hi, off] = SP_TEMP[sp], t = Math.round(wt);
+  if (wt != null && sp && !z.lake){ const [lo, hi, off] = SP_TEMP[sp], t = Math.round(wt);
     const e = t >= lo && t <= hi ? [2, `${t}°F water is ideal for ${sp.toLowerCase()}.`] : t < off ? [-5, `${t}°F water is cold for ${sp.toLowerCase()}. Fish deep, slow and in the afternoon.`]
       : t < lo ? [-2, `${t}°F water is on the cool side for ${sp.toLowerCase()}. Warmest part of the day is best.`] : t > hi + 4 ? [-3, `${t}°F water is hot. Fish deeper water and low light.`] : [-1, `${t}°F water is a little warm for ${sp.toLowerCase()}.`];
     extras.push({k:'water', label:'Water', pts:e[0], why:e[1]}); }
@@ -1069,7 +1183,7 @@ function paintStatus(){
   let tide = ''; if (h){ const v = h[cur], r = (h[Math.min(cur+1,H-1)]-h[Math.max(cur-1,0)])/2; tide = `<span>Tide <b>${Math.abs(r)<.04?'Slack':(r>0?'↑ In':'↓ Out')} ${v.toFixed(1)} ft</b></span>`; }
   $('cond').innerHTML = `<span>Wind <b>${COND.noWind?'n/a':card(wd)+' '+ws+' mph'}</b></span>${tide}${COND.waterTemp?`<span>Water <b>${COND.waterTemp.toFixed(0)}°</b></span>`:(temp!=null?`<span>Air <b>${temp}°</b></span>`:'')}<span>Moon <b>${Math.round(hr.moon*100)}%</b></span>`;
 }
-const KIND_ORDER = ['pass','bridge','dropoff','flat','mangrove','oyster','dock','reef'];
+const KIND_ORDER = ['pass','bridge','dropoff','flat','mangrove','oyster','dock','reef','point','cove'];
 function paintHead(){
   const el = $('dockSummary'); let html;
   if (!COND) html = 'Loading conditions…';
@@ -1109,7 +1223,13 @@ setDock(dockOpen);
 const MOON_NAMES = [[.03,'New moon'],[.22,'Waxing crescent'],[.28,'First quarter'],[.47,'Waxing gibbous'],[.53,'Full moon'],[.72,'Waning gibbous'],[.78,'Last quarter'],[.97,'Waning crescent'],[1.01,'New moon']];
 function moonName(t){ const ph = SunCalc.getMoonIllumination(new Date(t)).phase; return MOON_NAMES.find(m => ph < m[0])[1]; }
 function marineHtml(i){
-  if (!COND) return ''; const ex = exAt(i), wt = waterTempAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i];
+  if (!COND) return '';
+  { const m = map.getCenter(); if (isInland([m.lat, m.lng])){ const ex = exAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i], cell = (v, l) => `<div>${v != null ? `<b>${v}</b>` : '<b>—</b>'}<span>${l}</span></div>`;
+    const near = [...LAKES.values()].sort((a,b) => distKm([m.lat,m.lng], a.c) - distKm([m.lat,m.lng], b.c))[0], lv = near && near.gauge ? LEVELS.get(near.gauge[0]) : null, trend = ex.dp3 == null ? '' : ex.dp3 <= -0.5 ? ' ↓' : ex.dp3 >= 0.5 ? ' ↑' : ' →';
+    return `<div class="mc"><div class="mc-h"><span class="eyebrow">${esc(near ? shortLake(near.name) : 'Lake')} · ${hourLabel(i)}</span><small>USGS · NWS · Open-Meteo</small></div><div class="mc-g">
+      ${cell(ex.lakeT != null ? Math.round(ex.lakeT)+'°F' : null, 'Water (est.)')}${cell(lv && lv.now != null ? lv.now.toFixed(1)+' ft' : null, 'Lake level')}${cell(lv && lv.now != null ? (lv.d24 >= 0 ? '+' : '')+lv.d24.toFixed(2)+' ft' : null, 'Last 24 hours')}${cell(`${card(wd)} ${ws}`, 'Wind mph')}
+      ${cell(ex.p != null ? (ex.p*0.02953).toFixed(2)+trend : null, 'Pressure inHg')}${cell(Math.round(hr.moon*100)+'%', moonName(T0+i*3600e3))}${cell(ex.vis != null ? (ex.vis >= 10 ? '10+' : ex.vis.toFixed(1))+' mi' : null, 'Visibility')}${cell(lakeSeason(ex.lakeT, new Date(HRS[i].t).getMonth()).k.replace('latefall','late fall').replace('prespawn','pre-spawn').replace('postspawn','post-spawn'), 'Pattern')}
+    </div></div>`; } } const ex = exAt(i), wt = waterTempAt(i), [ws, wd] = COND.wx[i], hr = COND.hour[i];
   const dash = '<b>—</b>', cell = (val, label) => `<div>${val != null ? `<b>${val}</b>` : dash}<span>${label}</span></div>`;
   const trend = ex.dp3 == null ? '' : ex.dp3 <= -0.5 ? ' ↓' : ex.dp3 >= 0.5 ? ' ↑' : ' →';
   const sr = fmtTime(T0 + hr.sr*3600e3), ss = fmtTime(T0 + hr.ss*3600e3);
@@ -1166,6 +1286,9 @@ function stormNote(z, b){ // flag storms in or right after the best window
   return '';
 }
 function tideTurnsHtml(z, d){
+  if (z.lake){ const lv = lakeLevel(z), T = exAt(cur).lakeT;
+    const lvl = lv && lv.now != null ? `<div class="turn hi"><span>Level</span><b>${lv.now.toFixed(1)} ft</b><small>${lv.full ? (lv.now - lv.full >= 0 ? '+' : '') + (lv.now - lv.full).toFixed(1) + ' vs full' : 'USGS'}</small></div><div class="turn ${lv.d24 >= 0 ? 'hi' : 'lo'}"><span>24 hours</span><b>${lv.d24 >= 0 ? '+' : ''}${lv.d24.toFixed(2)} ft</b><small>${lv.d72 >= 0 ? '+' : ''}${lv.d72.toFixed(1)} in 3 days</small></div>` : '';
+    return `<div class="turns">${lvl}<div class="turn"><span>Water</span><b>${T != null ? Math.round(T)+'°F' : '—'}</b><small>estimated</small></div></div>${lv && lv.now != null ? '' : '<p class="note">No live lake level gauge for this lake, so the rating leans on season, wind, moon and light.</p>'}`; }
   if (!z.st) return ''; const tt = tideTurns(z.st, d); if (!tt.length) return '';
   const C = z.cs && CURS.get(z.cs), cv = z.cs && curV(z.cs), now = cv && cv[cur] != null ? cv[cur] : null;
   return `<div class="turns">${tt.map(x => `<div class="turn ${x.hi?'hi':'lo'}"><span>${x.hi?'↑ High':'↓ Low'}</span><b>${x.v.toFixed(1)} ft</b><small>${fmtTime(x.t)}</small></div>`).join('')}</div>
@@ -1182,11 +1305,11 @@ function paintSpot(){
     ${stormNote(z, b)}
     ${tideTurnsHtml(z, d)}
     <dl class="facts">
-      <dt>Fishes best</dt><dd>${z.pref==='moving'?'Any moving tide':cap(z.pref)+' tide'}</dd>
+      <dt>Fishes best</dt><dd>${z.lake ? 'Depends on the season (see Lake above)' : z.pref==='moving'?'Any moving tide':cap(z.pref)+' tide'}</dd>
       ${z.depth?`<dt>Depth</dt><dd>${esc(z.depth)}</dd>`:''}
       <dt>Structure</dt><dd>${esc(z.structure)}</dd>
       <dt>GPS</dt><dd>${coordBlock(z.c[0], z.c[1])}</dd>
-      <dt>Tide station</dt><dd>${esc(stName || 'None nearby')}</dd>
+      ${z.lake ? `<dt>Lake</dt><dd>${esc(z.lake.name)}</dd>` : `<dt>Tide station</dt><dd>${esc(stName || 'None nearby')}</dd>`}
       <dt>Species</dt><dd class="chips">${z.species.map(x=>`<span class="chip">${esc(x)}</span>`).join('')}</dd>
     </dl>
     <button class="plan-btn" type="button" id="planBtn">Game plan for ${hourLabel(cur)}</button>
@@ -1206,6 +1329,13 @@ function shortWhy(s){ const up = s.why.filter(w=>w[0]>0)[0], dn = s.why.filter(w
 
 // ---- game plan
 function gamePlan(z, s, i){
+  if (z.lake){ const S = lakeSeason(exAt(i).lakeT, new Date(HRS[i].t).getMonth()).k, [ws] = COND.wx[i], low = COND.hour[i].dS <= 1.5 || COND.hour[i].alt < 0;
+    const deep = /winter|summer/.test(S), shallowBite = /spawn|fall|prespawn/.test(S);
+    if (z.type === 'cove') return `### Start here\n${shallowBite ? 'Work the back half of the cove and any flat pockets; that is where fish are now.' : 'Start at the mouth of the cove where it meets deeper water; fish are not far back this time of year.'}\n### How to work it\nMove slowly and fan-cast the bank, docks and laydowns. ${ws > 12 ? 'Fish the windy side first.' : 'Keep casts long in calm water.'}\n### Baits\n- Shallow: weightless soft plastic, squarebill crankbait, or a spinnerbait\n- Crappie: small jig or minnow around brush and dock posts\n- ${low ? 'Low light: topwater walking bait or buzzbait' : 'Bright sun: shaky head or wacky rig in the shade'}\n### If it's slow\nBack out toward the mouth and the first drop, or try the next cove.`;
+    if (z.type === 'bridge') return `### Start here\nFish the pilings and riprap where the channel swings under the span.\n### How to work it\nWork the shady side of the pilings, then the riprap corners. ${deep ? 'Fish deep and slow along the channel edge.' : 'Cast to the riprap and pilings and bring baits down the slope.'}\n### Baits\n- Crappie: 1/16 oz jig or live minnow tight to the pilings\n- Bass: crankbait along the riprap, jig on the piling bases\n- Stripers: live herring or a bucktail where bait shows on the graph\n### If it's slow\nTry the other side of the bridge, or move to a nearby point.`;
+    if (z.type === 'dock') return `### Start here\nSkip baits under the deepest docks and the slips closest to the channel.\n### How to work it\nFish the shady side and the walkway posts; ten casts a dock, then move.\n### Baits\n- Crappie: small jig skipped under the slips, or a minnow under a float\n- Bass: shaky head or wacky rig skipped into the shade\n- Bream: crickets or worms near the walkways\n### If it's slow\nMove to docks with brush or deeper water under them.`;
+    return `### Start here\n${deep ? 'Idle the point and find where it drops into deeper water; fish sit on that break.' : 'Start shallow on the point and work out toward the drop.'} ${ws >= 5 ? `Fish the side the ${ws} mph wind is blowing into.` : ''}\n### How to work it\nPosition off the point and cast up onto it, bringing baits down the slope.\n### Baits by depth\n- Shallow end: crankbait, spinnerbait, ${low ? 'or topwater at low light' : 'or a swimbait'}\n- The break: jig or Carolina rig dragged down the slope\n- Deep: drop shot or spoon ${S==='winter' ? 'right on the bottom' : 'where bait shows on the graph'}\n### If it's slow\nTry the next point, or the secondary points leading into a cove.`;
+  }
   const t = s.tide, [ws, wd] = COND.wx[i], slack = Math.abs(t.r||0) < .04, dir = slack ? 'slack' : t.dir, windy = ws > 14;
   const lee = windy ? ` Stay on the side protected from the ${ws} mph ${card(wd)} wind.` : '';
   switch (z.type){
